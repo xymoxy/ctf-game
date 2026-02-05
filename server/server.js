@@ -588,7 +588,7 @@ class GameRoom {
     }
 
     createExplosion(bullet) {
-        const weapon = CONFIG.WEAPONS.m79; // Assuming only m79 is explosive for now
+        const weapon = CONFIG.WEAPONS.m79;
         this.broadcast('explosion', {
             x: bullet.x,
             y: bullet.y,
@@ -597,21 +597,23 @@ class GameRoom {
 
         for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
             if (targetPlayer.isDead) continue;
-            // Explosion can hit anyone, even allow self-damage logic if desired, but let's keep it enemy-only + self for now?
-            // User requested "bomb style". Let's stick to enemies for fairness or maybe all?
-            // Let's do enemies + owner (self damage) for tactical play. 
-            // Or simplified: Just enemies.
+
+            // Allow self-damage but prevent team damage (except self)
             if (targetPlayer.team === bullet.team && targetId !== bullet.ownerId) continue;
 
             const dist = distance(bullet.x, bullet.y, targetPlayer.x, targetPlayer.y);
             if (dist <= weapon.radius) {
-                // Calculate falloff damage? Or just flat.
-                // Center hit = CONFIG.WEAPONS.m79.impactDamage (if direct hit, handled by hitPlayer normally?)
-                // Actually if I call createExplosion, I should handle all damage here.
+                // Damage Falloff:
+                // Direct Hit (0 dist) = 100% Damage
+                // Max Range (radius) = ~30% Damage
 
-                let damage = weapon.splashDamage;
-                // Bonus for direct proximity?
-                // Let's keep simpler: flat splash damage.
+                const falloff = 1 - (dist / weapon.radius);
+
+                // Base damage from config impactDamage at center, min 30 at edge
+                let damage = Math.floor(30 + ((weapon.impactDamage - 30) * falloff));
+
+                // If very close, ensure full impact damage (LETHAL RADIUS)
+                if (dist < 20) damage = weapon.impactDamage;
 
                 this.hitPlayer(targetId, bullet.ownerId, damage);
             }
