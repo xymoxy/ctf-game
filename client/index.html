@@ -57,7 +57,7 @@
                 <span class="status-dot"></span>
                 <span class="status-text">Sunucuya bağlanılıyor...</span>
             </div>
-            <div class="version-tag">v0.2.5</div>
+            <div class="version-tag">v0.2.6</div>
         </div>
 
         <div class="background-effects">
@@ -133,7 +133,10 @@
             <div class="hud-left">
                 <div class="player-info red-team">
                     <span class="team-icon">🔴</span>
-                    <span class="player-score" id="red-score">0</span>
+                    <div class="score-container">
+                        <span class="player-score" id="red-score">0</span>
+                        <span class="player-kills" id="red-kills">⚔️ 0</span>
+                    </div>
                 </div>
             </div>
 
@@ -144,7 +147,10 @@
 
             <div class="hud-right">
                 <div class="player-info blue-team">
-                    <span class="player-score" id="blue-score">0</span>
+                    <div class="score-container">
+                        <span class="player-score" id="blue-score">0</span>
+                        <span class="player-kills" id="blue-kills">⚔️ 0</span>
+                    </div>
                     <span class="team-icon">🔵</span>
                 </div>
             </div>

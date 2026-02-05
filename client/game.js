@@ -1227,14 +1227,23 @@ function updateHUD() {
 
     let redScore = 0;
     let blueScore = 0;
+    let redKills = 0;
+    let blueKills = 0;
 
     Object.values(gameState.players).forEach(player => {
-        if (player.team === 'red') redScore = player.score;
-        else blueScore = player.score;
+        if (player.team === 'red') {
+            redScore = player.flags || 0;
+            redKills += player.kills || 0;
+        } else {
+            blueScore = player.flags || 0;
+            blueKills += player.kills || 0;
+        }
     });
 
     document.getElementById('red-score').textContent = redScore;
     document.getElementById('blue-score').textContent = blueScore;
+    document.getElementById('red-kills').textContent = `⚔️ ${redKills}`;
+    document.getElementById('blue-kills').textContent = `⚔️ ${blueKills}`;
 
     const myPlayer = gameState.players[myId];
     if (myPlayer) {
@@ -1323,8 +1332,8 @@ function showGameOver(winner) {
     let redScore = 0;
     let blueScore = 0;
     Object.values(gameState.players).forEach(player => {
-        if (player.team === 'red') redScore = player.score;
-        else blueScore = player.score;
+        if (player.team === 'red') redScore = player.flags || 0;
+        else blueScore = player.flags || 0;
     });
 
     document.getElementById('final-red-score').textContent = redScore;

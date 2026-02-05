@@ -45,7 +45,7 @@ const CONFIG = {
     WEAPONS: {
         pistol: { name: 'Deagle', damage: 45, cooldown: 500, speed: 18, range: 700 },
         smg: { name: 'SMG', damage: 12, cooldown: 100, speed: 20, range: 500, spread: 0.1 },
-        m79: { name: 'M79', damage: 0, cooldown: 1500, speed: 12, range: 800, explosive: true, radius: 150, impactDamage: 100, splashDamage: 40 },
+        m79: { name: 'M79', damage: 0, cooldown: 1500, speed: 12, range: 800, explosive: true, radius: 110, impactDamage: 100, splashDamage: 40 },
         sniper: { name: 'Sniper', damage: 100, cooldown: 2000, speed: 35, range: 1500 }
     }
 };
@@ -71,7 +71,9 @@ function createGameState(player1Id, player2Id) {
                 y: CONFIG.MAP_HEIGHT / 2,
                 team: 'red',
                 hasFlag: false,
-                score: 0,
+                score: 0, // Legacy/Total? Let's use specific counters
+                kills: 0,
+                flags: 0,
                 health: 100,
                 angle: 0,
                 velocityX: 0,
@@ -91,7 +93,9 @@ function createGameState(player1Id, player2Id) {
                 y: CONFIG.MAP_HEIGHT / 2,
                 team: 'blue',
                 hasFlag: false,
-                score: 0,
+                score: 0, // Legacy/Total? Let's use specific counters
+                kills: 0,
+                flags: 0,
                 health: 100,
                 angle: 0,
                 velocityX: 0,
@@ -107,8 +111,8 @@ function createGameState(player1Id, player2Id) {
             }
         },
         flags: {
-            red: { x: 80, y: CONFIG.MAP_HEIGHT / 2, isHome: true, carrier: null },
-            blue: { x: CONFIG.MAP_WIDTH - 80, y: CONFIG.MAP_HEIGHT / 2, isHome: true, carrier: null }
+            red: { x: 80, y: CONFIG.MAP_HEIGHT / 2, defX: 80, defY: CONFIG.MAP_HEIGHT / 2, isHome: true, carrier: null },
+            blue: { x: CONFIG.MAP_WIDTH - 80, y: CONFIG.MAP_HEIGHT / 2, defX: CONFIG.MAP_WIDTH - 80, defY: CONFIG.MAP_HEIGHT / 2, isHome: true, carrier: null }
         },
         bullets: [],
         ultimateBeams: [],
@@ -633,6 +637,11 @@ class GameRoom {
             player.isDead = true;
             player.health = 0;
 
+            // Increment kills for attacker
+            if (attacker && attackerId !== playerId) {
+                attacker.kills = (attacker.kills || 0) + 1;
+            }
+
             if (player.hasFlag) {
                 const enemyTeam = player.team === 'red' ? 'blue' : 'red';
                 this.state.flags[enemyTeam].x = player.x;
@@ -699,31 +708,36 @@ class GameRoom {
         if (!player.hasFlag) return;
 
         const homeFlag = this.state.flags[player.team];
+        const enemyTeam = player.team === 'red' ? 'blue' : 'red';
+        const enemyFlag = this.state.flags[enemyTeam];
 
-        if (distance(player.x, player.y, homeFlag.x, homeFlag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE)) {
-            if (homeFlag.isHome) {
-                player.score++;
-                player.hasFlag = false;
+        if (distance(player.x, player.y, homeFlag.x, homeFlag.y) < CONFIG.FLAG_CAPTURE_RADIUS) {
+            // CAPTURE!
+            player.hasFlag = false;
+            player.score += 1; // Legacy support
+            player.flags = (player.flags || 0) + 1; // Explicit flag count
 
-                const enemyTeam = player.team === 'red' ? 'blue' : 'red';
-                this.resetFlag(enemyTeam);
+            enemyFlag.isHome = true;
+            enemyFlag.x = enemyFlag.defX || (player.team === 'red' ? CONFIG.MAP_WIDTH - 80 : 80); // Reset to default
+            enemyFlag.y = enemyFlag.defY || CONFIG.MAP_HEIGHT / 2;
+            enemyFlag.carrier = null;
 
-                // Give ultimate charge to enemy (75%)
-                for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
-                    if (targetPlayer.team !== player.team) {
-                        this.addUltimateCharge(targetId, CONFIG.ULTIMATE_CHARGE_ON_ENEMY_SCORE);
-                    }
+            // Give ultimate charge to enemy (75%)
+            for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
+                if (targetPlayer.team !== player.team) {
+                    this.addUltimateCharge(targetId, CONFIG.ULTIMATE_CHARGE_ON_ENEMY_SCORE);
                 }
+            }
 
-                this.broadcast('flagCapture', {
-                    playerId: player.id,
-                    score: player.score,
-                    team: player.team
-                });
+            this.broadcast('flagCapture', {
+                playerId: player.id,
+                team: player.team,
+                score: player.flags // Send flags as score
+            });
 
-                if (player.score >= CONFIG.SCORE_TO_WIN) {
-                    this.endGame(player.id);
-                }
+            // Check win condition based on FLAGS
+            if (player.flags >= CONFIG.SCORE_TO_WIN) {
+                this.endGame(player.id);
             }
         }
     }
