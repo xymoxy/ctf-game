@@ -191,6 +191,22 @@ function initEventListeners() {
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Fix: Reset input when window loses focus (alt-tab, tab switch)
+    window.addEventListener('blur', resetInput);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            resetInput();
+        }
+    });
+}
+
+// Reset all input keys
+function resetInput() {
+    input.up = false;
+    input.down = false;
+    input.left = false;
+    input.right = false;
 }
 
 // ============================================
