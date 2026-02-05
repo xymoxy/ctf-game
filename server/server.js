@@ -25,7 +25,7 @@ const CONFIG = {
     BULLET_SIZE: 8,
     FLAG_SIZE: 25,
     SCORE_TO_WIN: 5,
-    MATCH_TIME: 180, // 3 minutes
+    MATCH_TIME: 900, // 15 minutes
     RESPAWN_TIME: 2000,
     HIT_STUN_TIME: 500,
     // Ultimate settings
