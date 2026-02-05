@@ -3,7 +3,7 @@
 // ============================================
 
 // Configuration
-const SERVER_URL = 'http://localhost:3000'; // Will be updated for production
+const SERVER_URL = 'https://ctf-game-server.onrender.com';
 
 // Game State
 let socket = null;
