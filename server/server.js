@@ -45,8 +45,8 @@ const CONFIG = {
     WEAPONS: {
         pistol: { name: 'Deagle', damage: 45, cooldown: 500, speed: 18, range: 700 },
         smg: { name: 'SMG', damage: 12, cooldown: 100, speed: 20, range: 500, spread: 0.1 },
-        m79: { name: 'M79', damage: 0, cooldown: 1500, speed: 12, range: 800, explosive: true, radius: 120, impactDamage: 60, splashDamage: 40 },
-        sniper: { name: 'Sniper', damage: 85, cooldown: 2000, speed: 35, range: 1500 }
+        m79: { name: 'M79', damage: 0, cooldown: 1500, speed: 12, range: 800, explosive: true, radius: 150, impactDamage: 100, splashDamage: 40 },
+        sniper: { name: 'Sniper', damage: 100, cooldown: 2000, speed: 35, range: 1500 }
     }
 };
 

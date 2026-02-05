@@ -19,6 +19,14 @@ let myUltimateCharge = 0;
 let isHoldingUltimate = false;
 let ultimateHoldStart = 0;
 let ultimateHoldProgress = 0;
+let lastShotTime = 0;
+let currentWeapon = 'pistol'; // Default local tracking
+let weaponConfig = {
+    pistol: { cooldown: 500 },
+    smg: { cooldown: 100 },
+    m79: { cooldown: 1500 },
+    sniper: { cooldown: 2000 }
+};
 
 // Canvas & Rendering
 let canvas = null;
@@ -483,6 +491,20 @@ function shoot() {
     if (!player || player.isDead) return;
     if (player.isChargingUltimate) return;
 
+    if (config?.WEAPONS) {
+        // Use server config if available to keep sync, else fallback
+        const weapon = config.WEAPONS[currentWeapon] || weaponConfig[currentWeapon];
+        const now = Date.now();
+        if (now - lastShotTime < weapon.cooldown) return;
+        lastShotTime = now;
+    } else {
+        // Fallback checks
+        const weapon = weaponConfig[currentWeapon];
+        const now = Date.now();
+        if (now - lastShotTime < weapon.cooldown) return;
+        lastShotTime = now;
+    }
+
     socket.emit('playerShoot', { angle: input.angle });
 
     const muzzleX = player.x + Math.cos(input.angle) * 20;
@@ -597,6 +619,9 @@ function render() {
 
     // Draw active emojis
     drawEmojis();
+
+    // Draw reload indicator
+    drawReloadIndicator();
 
     // Draw ultimate hold bar (if charging)
     if (isHoldingUltimate) {
@@ -1297,6 +1322,37 @@ function updateEmojis() {
 
 window.selectWeapon = function (weaponType) {
     if (!socket) return;
+    currentWeapon = weaponType;
     socket.emit('selectWeapon', { weapon: weaponType });
     document.getElementById('weapon-overlay').classList.remove('active');
 };
+
+function drawReloadIndicator() {
+    if (!config?.WEAPONS || !myId || !gameState?.players[myId]) return;
+    if (gameState.players[myId].isDead) return;
+
+    // Use server config if available, else local fallback
+    const weapon = config.WEAPONS[currentWeapon] || weaponConfig[currentWeapon];
+    if (!weapon) return;
+
+    const now = Date.now();
+    const elapsed = now - lastShotTime;
+
+    if (elapsed < weapon.cooldown) {
+        // Draw reload circle near cursor/player
+        const percent = elapsed / weapon.cooldown;
+        const radius = 15;
+
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY + 30, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY + 30, radius, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * percent));
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+}
