@@ -297,6 +297,10 @@ class GameRoom {
     handleUltimateStart(playerId, angle) {
         const player = this.state.players[playerId];
         if (!player || player.isDead) return;
+
+        // Ultimate temporarily disabled
+        return;
+
         if (player.ultimateCharge < 100) return; // Not fully charged
         if (player.isChargingUltimate) return; // Already charging
 
@@ -712,35 +716,32 @@ class GameRoom {
     checkFlagCapture(player) {
         if (!player.hasFlag) return;
 
-        const homeFlag = this.state.flags[player.team];
+        // Define base positions (where you score)
+        const baseX = player.team === 'red' ? 80 : CONFIG.MAP_WIDTH - 80;
+        const baseY = CONFIG.MAP_HEIGHT / 2;
+
         const enemyTeam = player.team === 'red' ? 'blue' : 'red';
         const enemyFlag = this.state.flags[enemyTeam];
 
-        if (distance(player.x, player.y, homeFlag.x, homeFlag.y) < CONFIG.FLAG_CAPTURE_RADIUS) {
+        // Check if player is at their BASE (not flag position!)
+        if (distance(player.x, player.y, baseX, baseY) < (CONFIG.PLAYER_SIZE + CONFIG.FLAG_SIZE)) {
             // CAPTURE!
             player.hasFlag = false;
             player.score += 1; // Legacy support
             player.flags = (player.flags || 0) + 1; // Explicit flag count
 
             enemyFlag.isHome = true;
-            enemyFlag.x = enemyFlag.defX || (player.team === 'red' ? CONFIG.MAP_WIDTH - 80 : 80); // Reset to default
+            enemyFlag.x = enemyFlag.defX || (player.team === 'red' ? CONFIG.MAP_WIDTH - 80 : 80);
             enemyFlag.y = enemyFlag.defY || CONFIG.MAP_HEIGHT / 2;
             enemyFlag.carrier = null;
-
-            // Give ultimate charge to enemy (75%)
-            for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
-                if (targetPlayer.team !== player.team) {
-                    this.addUltimateCharge(targetId, CONFIG.ULTIMATE_CHARGE_ON_ENEMY_SCORE);
-                }
-            }
 
             this.broadcast('flagCapture', {
                 playerId: player.id,
                 team: player.team,
-                score: player.flags // Send flags as score
+                score: player.flags
             });
 
-            // Check win condition based on FLAGS
+            // Check win condition
             if (player.flags >= CONFIG.SCORE_TO_WIN) {
                 this.endGame(player.id);
             }
