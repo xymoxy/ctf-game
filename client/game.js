@@ -51,6 +51,8 @@ const hitEffects = [];
 const activeBeams = [];
 const healthPickups = [];
 const activeEmojis = [];
+const activeExplosions = [];
+const bulletTrails = [];
 
 // Screen shake
 let shakeIntensity = 0;
@@ -271,6 +273,40 @@ function initSocket() {
             startTime: Date.now(),
             offsetY: 0
         });
+    });
+
+    socket.on('explosion', (data) => {
+        // Add explosion visual
+        activeExplosions.push({
+            x: data.x,
+            y: data.y,
+            maxRadius: data.radius,
+            radius: 5,
+            alpha: 1,
+            life: 30
+        });
+
+        // Add particles
+        for (let i = 0; i < 20; i++) {
+            particles.push({
+                x: data.x,
+                y: data.y,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 40,
+                color: Math.random() > 0.5 ? '#ff9900' : '#ff3300',
+                size: Math.random() * 6 + 2
+            });
+        }
+
+        // Screen shake if close
+        if (myId && gameState?.players[myId]) {
+            const player = gameState.players[myId];
+            const dist = Math.hypot(player.x - data.x, player.y - data.y);
+            if (dist < 500) {
+                shakeScreen(Math.max(5, 20 - dist / 25));
+            }
+        }
     });
 
     socket.on('ultimateFired', (data) => {
@@ -555,6 +591,8 @@ function gameLoop() {
         updateBeams();
         updateShake();
         updateEmojis();
+        updateExplosions();
+        updateBulletTrails();
     }
 
     requestAnimationFrame(gameLoop);
@@ -614,11 +652,17 @@ function render() {
     // Draw hit effects
     drawHitEffects();
 
-    // Draw crosshair
-    drawCrosshair();
+    // Draw bullet trails
+    drawBulletTrails();
+
+    // Draw explosions
+    drawExplosions();
 
     // Draw active emojis
     drawEmojis();
+
+    // Draw crosshair
+    drawCrosshair();
 
     // Draw reload indicator
     drawReloadIndicator();
@@ -1314,6 +1358,84 @@ function updateEmojis() {
             emoji.offsetY += 0.5;
         }
     }
+}
+
+// ============================================
+// VISUAL EFFECTS SYSTEM
+// ============================================
+
+function updateExplosions() {
+    for (let i = activeExplosions.length - 1; i >= 0; i--) {
+        const exp = activeExplosions[i];
+        exp.radius += (exp.maxRadius - exp.radius) * 0.15;
+        exp.alpha = exp.life / 30;
+        exp.life--;
+
+        if (exp.life <= 0) {
+            activeExplosions.splice(i, 1);
+        }
+    }
+}
+
+function updateBulletTrails() {
+    // Add new trails for sniper bullets
+    if (gameState && gameState.bullets) {
+        gameState.bullets.forEach(bullet => {
+            if (bullet.type === 'sniper') {
+                // Create visual trail segment
+                bulletTrails.push({
+                    x: bullet.x,
+                    y: bullet.y,
+                    life: 20 // Short life
+                });
+            }
+        });
+    }
+
+    // Update existing trails
+    for (let i = bulletTrails.length - 1; i >= 0; i--) {
+        const trail = bulletTrails[i];
+        trail.life--;
+        if (trail.life <= 0) {
+            bulletTrails.splice(i, 1);
+        }
+    }
+}
+
+function drawExplosions() {
+    activeExplosions.forEach(exp => {
+        ctx.save();
+        ctx.globalAlpha = exp.alpha;
+
+        // Shockwave
+        ctx.beginPath();
+        ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 100, 50, 0.3)';
+        ctx.fill();
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Inner fire
+        ctx.beginPath();
+        ctx.arc(exp.x, exp.y, exp.radius * 0.7, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 50, 0, 0.5)';
+        ctx.fill();
+
+        ctx.restore();
+    });
+}
+
+function drawBulletTrails() {
+    bulletTrails.forEach(trail => {
+        ctx.save();
+        ctx.globalAlpha = trail.life / 20;
+        ctx.fillStyle = '#aaaaaa';
+        ctx.beginPath();
+        ctx.arc(trail.x, trail.y, 4, 0, Math.PI * 2); // Simple dot trail for now, simpler effectively
+        ctx.fill();
+        ctx.restore();
+    });
 }
 
 // ============================================
