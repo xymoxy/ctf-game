@@ -859,6 +859,11 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Ping handler for latency measurement
+    socket.on('ping', (callback) => {
+        if (typeof callback === 'function') callback();
+    });
+
     socket.on('playerShoot', (data) => {
         for (const room of gameRooms.values()) {
             if (room.state.players[socket.id]) {

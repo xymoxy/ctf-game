@@ -245,6 +245,12 @@ body {
     font-weight: 500;
 }
 
+.ping-display {
+    font-size: 0.8rem;
+    color: var(--accent-gold);
+    margin-top: 0.25rem;
+}
+
 .status-dot {
     width: 10px;
     height: 10px;

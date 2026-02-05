@@ -20,6 +20,7 @@ let isHoldingUltimate = false;
 let ultimateHoldStart = 0;
 let ultimateHoldProgress = 0;
 let lastShotTime = 0;
+let currentPing = 0;
 let currentWeapon = 'pistol'; // Default local tracking
 let weaponConfig = {
     pistol: { cooldown: 500 },
@@ -108,6 +109,15 @@ function initSocket() {
         console.log('Connected to server');
         isConnected = true;
         updateConnectionStatus(true);
+
+        // Start ping measurement
+        setInterval(() => {
+            const start = Date.now();
+            socket.emit('ping', () => {
+                currentPing = Date.now() - start;
+                document.getElementById('ping-display').textContent = `📶 ${currentPing}ms`;
+            });
+        }, 2000);
     });
 
     socket.on('disconnect', () => {
@@ -358,8 +368,10 @@ function initEventListeners() {
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
 
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mousedown', handleMouseDown);
+    // Mouse events on document for better control
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     window.addEventListener('blur', resetInput);
@@ -505,12 +517,18 @@ function handleMouseMove(e) {
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
+    // Calculate mouse position relative to canvas, even when outside
     mouseX = (e.clientX - rect.left) * scaleX;
     mouseY = (e.clientY - rect.top) * scaleY;
 
+    // Clamp to canvas bounds for aiming calculation
+    const clampedX = Math.max(0, Math.min(canvas.width, mouseX));
+    const clampedY = Math.max(0, Math.min(canvas.height, mouseY));
+
     const player = gameState?.players[myId];
     if (player) {
-        input.angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+        // Use clamped values for angle calculation
+        input.angle = Math.atan2(clampedY - player.y, clampedX - player.x);
     }
 }
 
