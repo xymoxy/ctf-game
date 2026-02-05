@@ -403,21 +403,28 @@ class GameRoom {
             if (player.isDead) continue;
 
             const input = this.inputs[playerId] || {};
-            let newX = player.x;
-            let newY = player.y;
 
             // Handle movement (slower while charging ultimate)
             const speedMod = player.isChargingUltimate ? 0.3 : 1;
-            if (input.up) newY -= CONFIG.PLAYER_SPEED * speedMod;
-            if (input.down) newY += CONFIG.PLAYER_SPEED * speedMod;
-            if (input.left) newX -= CONFIG.PLAYER_SPEED * speedMod;
-            if (input.right) newX += CONFIG.PLAYER_SPEED * speedMod;
+            let moveX = 0;
+            let moveY = 0;
 
+            if (input.up) moveY -= CONFIG.PLAYER_SPEED * speedMod;
+            if (input.down) moveY += CONFIG.PLAYER_SPEED * speedMod;
+            if (input.left) moveX -= CONFIG.PLAYER_SPEED * speedMod;
+            if (input.right) moveX += CONFIG.PLAYER_SPEED * speedMod;
+
+            // Try X movement separately
+            let newX = player.x + moveX;
             newX = Math.max(CONFIG.PLAYER_SIZE / 2, Math.min(CONFIG.MAP_WIDTH - CONFIG.PLAYER_SIZE / 2, newX));
-            newY = Math.max(CONFIG.PLAYER_SIZE / 2, Math.min(CONFIG.MAP_HEIGHT - CONFIG.PLAYER_SIZE / 2, newY));
-
-            if (!collidesWithObstacle(newX, newY, CONFIG.PLAYER_SIZE, this.state.obstacles)) {
+            if (!collidesWithObstacle(newX, player.y, CONFIG.PLAYER_SIZE, this.state.obstacles)) {
                 player.x = newX;
+            }
+
+            // Try Y movement separately (wall sliding!)
+            let newY = player.y + moveY;
+            newY = Math.max(CONFIG.PLAYER_SIZE / 2, Math.min(CONFIG.MAP_HEIGHT - CONFIG.PLAYER_SIZE / 2, newY));
+            if (!collidesWithObstacle(player.x, newY, CONFIG.PLAYER_SIZE, this.state.obstacles)) {
                 player.y = newY;
             }
 
