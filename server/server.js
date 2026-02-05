@@ -682,10 +682,10 @@ class GameRoom {
     checkFlagPickup(player) {
         // First check: Can we RETURN our own flag?
         const ownFlag = this.state.flags[player.team];
-        // Cannot return flag if it's currently held by an enemy
-        if (ownFlag.carrier) return;
 
-        if (!ownFlag.isHome) {
+        // Cannot return flag if it's currently held by an enemy (must kill carrier first)
+        // Only proceed with return check if it's NOT home and NOT carried
+        if (!ownFlag.isHome && !ownFlag.carrier) {
             // Our flag is dropped on the ground
             if (distance(player.x, player.y, ownFlag.x, ownFlag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE / 2)) {
                 // Return our flag to base!
