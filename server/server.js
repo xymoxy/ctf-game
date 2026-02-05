@@ -716,6 +716,10 @@ class GameRoom {
     checkFlagCapture(player) {
         if (!player.hasFlag) return;
 
+        // CTF RULE: Your own flag must be at your base to score!
+        const homeFlag = this.state.flags[player.team];
+        if (!homeFlag.isHome) return; // Can't score if your flag is stolen!
+
         // Define base positions (where you score)
         const baseX = player.team === 'red' ? 80 : CONFIG.MAP_WIDTH - 80;
         const baseY = CONFIG.MAP_HEIGHT / 2;
@@ -723,7 +727,7 @@ class GameRoom {
         const enemyTeam = player.team === 'red' ? 'blue' : 'red';
         const enemyFlag = this.state.flags[enemyTeam];
 
-        // Check if player is at their BASE (not flag position!)
+        // Check if player is at their BASE
         if (distance(player.x, player.y, baseX, baseY) < (CONFIG.PLAYER_SIZE + CONFIG.FLAG_SIZE)) {
             // CAPTURE!
             player.hasFlag = false;
