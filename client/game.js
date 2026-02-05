@@ -44,6 +44,7 @@ const input = {
 // Mouse position
 let mouseX = 0;
 let mouseY = 0;
+let isMouseDown = false;
 
 // Assets & Effects
 const particles = [];
@@ -515,9 +516,25 @@ function handleMouseMove(e) {
 
 function handleMouseDown(e) {
     if (currentScreen !== 'game') return;
-    if (document.getElementById('weapon-overlay').classList.contains('active')) return; // Block shooting if selecting weapon
-    if (e.button === 0 && !isHoldingUltimate) {
-        shoot();
+    if (document.getElementById('weapon-overlay').classList.contains('active')) return;
+
+    if (e.button === 0) {
+        if (!isHoldingUltimate) {
+            isMouseDown = true;
+            shoot(); // Immediate shot
+        }
+    }
+}
+
+function handleMouseUp(e) {
+    if (currentScreen !== 'game') return;
+    if (e.button === 0) {
+        isMouseDown = false;
+
+        // Release ultimate if holding
+        if (isHoldingUltimate) {
+            releaseUltimate();
+        }
     }
 }
 
@@ -546,6 +563,9 @@ function shoot() {
     const muzzleX = player.x + Math.cos(input.angle) * 20;
     const muzzleY = player.y + Math.sin(input.angle) * 20;
     addParticleEffect(muzzleX, muzzleY, '#ffff00', 5);
+
+    // Add slight recoil shaking
+    shakeScreen(currentWeapon === 'smg' ? 2 : 5);
 }
 
 function startUltimate() {
@@ -577,6 +597,11 @@ function gameLoop() {
         if (isHoldingUltimate) {
             const holdTime = Date.now() - ultimateHoldStart;
             ultimateHoldProgress = Math.min(100, (holdTime / (config?.ULTIMATE_HOLD_TIME || 1500)) * 100);
+        }
+
+        // Handle SMG Autofire
+        if (isMouseDown && currentWeapon === 'smg' && !isHoldingUltimate) {
+            shoot();
         }
 
         // Send input to server
