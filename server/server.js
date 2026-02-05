@@ -24,7 +24,7 @@ const CONFIG = {
     BULLET_SPEED: 15,
     BULLET_SIZE: 8,
     FLAG_SIZE: 25,
-    SCORE_TO_WIN: 3,
+    SCORE_TO_WIN: 5,
     MATCH_TIME: 180, // 3 minutes
     RESPAWN_TIME: 2000,
     HIT_STUN_TIME: 500,
@@ -682,7 +682,10 @@ class GameRoom {
     checkFlagPickup(player) {
         // First check: Can we RETURN our own flag?
         const ownFlag = this.state.flags[player.team];
-        if (!ownFlag.isHome && !ownFlag.carrier) {
+        // Cannot return flag if it's currently held by an enemy
+        if (ownFlag.carrier) return;
+
+        if (!ownFlag.isHome) {
             // Our flag is dropped on the ground
             if (distance(player.x, player.y, ownFlag.x, ownFlag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE / 2)) {
                 // Return our flag to base!
