@@ -57,7 +57,7 @@
                 <span class="status-dot"></span>
                 <span class="status-text">Sunucuya bağlanılıyor...</span>
             </div>
-            <div class="version-tag">v0.2.2</div>
+            <div class="version-tag">v0.2.3</div>
         </div>
 
         <div class="background-effects">
@@ -90,6 +90,45 @@
 
     <!-- Game Screen -->
     <div id="game-screen" class="screen">
+        <!-- Weapon Selection Overlay -->
+        <div id="weapon-overlay" class="weapon-overlay">
+            <h2>SİLAHINI SEÇ</h2>
+            <div class="weapon-grid">
+                <div class="weapon-card" onclick="selectWeapon('pistol')">
+                    <div class="weapon-icon">🔫</div>
+                    <h3>Deagle</h3>
+                    <p>45 Hasar | 0.5s Hız</p>
+                    <div class="weapon-stat">
+                        <div style="width: 80%; background: #00ff88;"></div>
+                    </div>
+                </div>
+                <div class="weapon-card" onclick="selectWeapon('smg')">
+                    <div class="weapon-icon">🦟</div>
+                    <h3>SMG</h3>
+                    <p>12 Hasar | 0.1s Hız</p>
+                    <div class="weapon-stat">
+                        <div style="width: 40%; background: #00ccff;"></div>
+                    </div>
+                </div>
+                <div class="weapon-card" onclick="selectWeapon('m79')">
+                    <div class="weapon-icon">💣</div>
+                    <h3>M79</h3>
+                    <p>Alan Hasarı | Yavaş</p>
+                    <div class="weapon-stat">
+                        <div style="width: 90%; background: #ff3366;"></div>
+                    </div>
+                </div>
+                <div class="weapon-card" onclick="selectWeapon('sniper')">
+                    <div class="weapon-icon">🦅</div>
+                    <h3>Sniper</h3>
+                    <p>85 Hasar | 2.0s Hız</p>
+                    <div class="weapon-stat">
+                        <div style="width: 100%; background: #ffcc00;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="game-hud">
             <div class="hud-left">
                 <div class="player-info red-team">

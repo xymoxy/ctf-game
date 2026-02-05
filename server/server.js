@@ -37,7 +37,17 @@ const CONFIG = {
     HEALTH_PICKUP_SIZE: 20,
     HEALTH_PICKUP_AMOUNT: 50,
     HEALTH_PICKUP_SPAWN_INTERVAL: 10000, // Every 10 seconds
-    MAX_HEALTH_PICKUPS: 3
+    MAX_HEALTH_PICKUPS: 3,
+    // Emoji settings
+    EMOJIS: ['😀', '😎', '💀', '🔥'],
+    EMOJI_DURATION: 2000, // 2 seconds display time
+    // Weapon settings
+    WEAPONS: {
+        pistol: { name: 'Deagle', damage: 45, cooldown: 500, speed: 18, range: 700 },
+        smg: { name: 'SMG', damage: 12, cooldown: 100, speed: 20, range: 500, spread: 0.1 },
+        m79: { name: 'M79', damage: 0, cooldown: 1500, speed: 12, range: 800, explosive: true, radius: 120, impactDamage: 60, splashDamage: 40 },
+        sniper: { name: 'Sniper', damage: 85, cooldown: 2000, speed: 35, range: 1500 }
+    }
 };
 
 // Matchmaking Queue
@@ -68,6 +78,8 @@ function createGameState(player1Id, player2Id) {
                 velocityY: 0,
                 isDead: false,
                 lastHit: 0,
+                lastShot: 0,
+                currentWeapon: 'pistol',
                 ultimateCharge: 0,
                 isChargingUltimate: false,
                 ultimateHoldStart: 0,
@@ -86,6 +98,8 @@ function createGameState(player1Id, player2Id) {
                 velocityY: 0,
                 isDead: false,
                 lastHit: 0,
+                lastShot: 0,
+                currentWeapon: 'pistol',
                 ultimateCharge: 0,
                 isChargingUltimate: false,
                 ultimateHoldStart: 0,
@@ -232,20 +246,47 @@ class GameRoom {
     handleShoot(playerId, angle) {
         const player = this.state.players[playerId];
         if (!player || player.isDead) return;
-        if (player.isChargingUltimate) return; // Can't shoot while charging
+        if (player.isChargingUltimate) return;
+
+        const weapon = CONFIG.WEAPONS[player.currentWeapon];
+        const now = Date.now();
+
+        if (now - player.lastShot < weapon.cooldown) return;
+        player.lastShot = now;
+
+        // Apply spread for SMG
+        let fireAngle = angle;
+        if (weapon.spread) {
+            fireAngle += (Math.random() - 0.5) * weapon.spread;
+        }
 
         const bullet = {
             id: Math.random().toString(36).substr(2, 9),
             x: player.x,
             y: player.y,
-            angle: angle,
+            angle: fireAngle,
             ownerId: playerId,
             team: player.team,
-            velocityX: Math.cos(angle) * CONFIG.BULLET_SPEED,
-            velocityY: Math.sin(angle) * CONFIG.BULLET_SPEED
+            velocityX: Math.cos(fireAngle) * weapon.speed,
+            velocityY: Math.sin(fireAngle) * weapon.speed,
+            damage: weapon.damage,
+            range: weapon.range,
+            distanceTraveled: 0,
+            type: player.currentWeapon,
+            explosive: weapon.explosive
         };
 
         this.state.bullets.push(bullet);
+    }
+
+    handleWeaponSelect(playerId, weaponType) {
+        const player = this.state.players[playerId];
+        if (!player) return;
+
+        // Validate weapon type
+        if (CONFIG.WEAPONS[weaponType]) {
+            player.currentWeapon = weaponType;
+        }
     }
 
     // Start charging ultimate (SPACE pressed)
@@ -487,27 +528,51 @@ class GameRoom {
         for (let i = 0; i < this.state.bullets.length; i++) {
             const bullet = this.state.bullets[i];
 
+            // Move bullet
+            const speed = Math.sqrt(bullet.velocityX ** 2 + bullet.velocityY ** 2);
             bullet.x += bullet.velocityX;
             bullet.y += bullet.velocityY;
+            bullet.distanceTraveled = (bullet.distanceTraveled || 0) + speed;
 
+            // Check range
+            if (bullet.range && bullet.distanceTraveled >= bullet.range) {
+                if (bullet.explosive) {
+                    this.createExplosion(bullet);
+                }
+                bulletsToRemove.push(i);
+                continue;
+            }
+
+            // Check bounds
             if (bullet.x < 0 || bullet.x > CONFIG.MAP_WIDTH ||
                 bullet.y < 0 || bullet.y > CONFIG.MAP_HEIGHT) {
                 bulletsToRemove.push(i);
                 continue;
             }
 
+            // Check obstacles
             if (collidesWithObstacle(bullet.x, bullet.y, CONFIG.BULLET_SIZE, this.state.obstacles)) {
+                if (bullet.explosive) {
+                    this.createExplosion(bullet);
+                }
                 bulletsToRemove.push(i);
                 continue;
             }
 
+            // Check player hits
             for (const [playerId, player] of Object.entries(this.state.players)) {
                 if (playerId === bullet.ownerId || player.isDead) continue;
                 if (player.team === bullet.team) continue;
 
                 if (distance(bullet.x, bullet.y, player.x, player.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.BULLET_SIZE / 2)) {
                     bulletsToRemove.push(i);
-                    this.hitPlayer(playerId, bullet.ownerId);
+
+                    if (bullet.explosive) {
+                        this.createExplosion(bullet);
+                    } else {
+                        // Pass specific damage
+                        this.hitPlayer(playerId, bullet.ownerId, bullet.damage);
+                    }
                     break;
                 }
             }
@@ -518,14 +583,45 @@ class GameRoom {
         }
     }
 
-    hitPlayer(playerId, attackerId) {
+    createExplosion(bullet) {
+        const weapon = CONFIG.WEAPONS.m79; // Assuming only m79 is explosive for now
+        this.broadcast('explosion', {
+            x: bullet.x,
+            y: bullet.y,
+            radius: weapon.radius
+        });
+
+        for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
+            if (targetPlayer.isDead) continue;
+            // Explosion can hit anyone, even allow self-damage logic if desired, but let's keep it enemy-only + self for now?
+            // User requested "bomb style". Let's stick to enemies for fairness or maybe all?
+            // Let's do enemies + owner (self damage) for tactical play. 
+            // Or simplified: Just enemies.
+            if (targetPlayer.team === bullet.team && targetId !== bullet.ownerId) continue;
+
+            const dist = distance(bullet.x, bullet.y, targetPlayer.x, targetPlayer.y);
+            if (dist <= weapon.radius) {
+                // Calculate falloff damage? Or just flat.
+                // Center hit = CONFIG.WEAPONS.m79.impactDamage (if direct hit, handled by hitPlayer normally?)
+                // Actually if I call createExplosion, I should handle all damage here.
+
+                let damage = weapon.splashDamage;
+                // Bonus for direct proximity?
+                // Let's keep simpler: flat splash damage.
+
+                this.hitPlayer(targetId, bullet.ownerId, damage);
+            }
+        }
+    }
+
+    hitPlayer(playerId, attackerId, damage = 34) {
         const player = this.state.players[playerId];
         const attacker = this.state.players[attackerId];
         const now = Date.now();
 
         if (now - player.lastHit < CONFIG.HIT_STUN_TIME) return;
 
-        player.health -= 34;
+        player.health -= damage;
         player.lastHit = now;
 
         // Add ultimate charge to attacker (25%)
@@ -763,6 +859,34 @@ io.on('connection', (socket) => {
         for (const room of gameRooms.values()) {
             if (room.state.players[socket.id]) {
                 room.handleUltimateRelease(socket.id, data.angle);
+                break;
+            }
+        }
+    });
+
+    // Send emoji (1-2-3-4 keys)
+    socket.on('sendEmoji', (data) => {
+        for (const room of gameRooms.values()) {
+            if (room.state.players[socket.id]) {
+                const player = room.state.players[socket.id];
+                const emojiIndex = data.index;
+                if (emojiIndex >= 0 && emojiIndex < CONFIG.EMOJIS.length) {
+                    room.broadcast('playerEmoji', {
+                        playerId: socket.id,
+                        emoji: CONFIG.EMOJIS[emojiIndex],
+                        x: player.x,
+                        y: player.y
+                    });
+                }
+                break;
+            }
+        }
+    });
+
+    socket.on('selectWeapon', (data) => {
+        for (const room of gameRooms.values()) {
+            if (room.state.players[socket.id]) {
+                room.handleWeaponSelect(socket.id, data.weapon);
                 break;
             }
         }

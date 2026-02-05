@@ -42,6 +42,7 @@ const particles = [];
 const hitEffects = [];
 const activeBeams = [];
 const healthPickups = [];
+const activeEmojis = [];
 
 // Screen shake
 let shakeIntensity = 0;
@@ -132,6 +133,7 @@ function initSocket() {
         showScreen('game');
         updateHUD();
         updateUltimateUI();
+        document.getElementById('weapon-overlay').classList.add('active'); // Show weapon selection
     });
 
     socket.on('gameState', (data) => {
@@ -186,6 +188,7 @@ function initSocket() {
     socket.on('playerRespawn', (data) => {
         if (data.playerId === myId) {
             updateHealth(100);
+            document.getElementById('weapon-overlay').classList.add('active'); // Show weapon selection on respawn
         }
     });
 
@@ -250,6 +253,16 @@ function initSocket() {
             isHoldingUltimate = false;
             ultimateHoldProgress = 0;
         }
+    });
+
+    socket.on('playerEmoji', (data) => {
+        activeEmojis.push({
+            x: data.x,
+            y: data.y,
+            emoji: data.emoji,
+            startTime: Date.now(),
+            offsetY: 0
+        });
     });
 
     socket.on('ultimateFired', (data) => {
@@ -401,6 +414,18 @@ function handleKeyDown(e) {
                 startUltimate();
             }
             break;
+        case 'Digit1':
+            socket.emit('sendEmoji', { index: 0 });
+            break;
+        case 'Digit2':
+            socket.emit('sendEmoji', { index: 1 });
+            break;
+        case 'Digit3':
+            socket.emit('sendEmoji', { index: 2 });
+            break;
+        case 'Digit4':
+            socket.emit('sendEmoji', { index: 3 });
+            break;
     }
 }
 
@@ -446,6 +471,7 @@ function handleMouseMove(e) {
 
 function handleMouseDown(e) {
     if (currentScreen !== 'game') return;
+    if (document.getElementById('weapon-overlay').classList.contains('active')) return; // Block shooting if selecting weapon
     if (e.button === 0 && !isHoldingUltimate) {
         shoot();
     }
@@ -506,6 +532,7 @@ function gameLoop() {
         updateHitEffects();
         updateBeams();
         updateShake();
+        updateEmojis();
     }
 
     requestAnimationFrame(gameLoop);
@@ -567,6 +594,9 @@ function render() {
 
     // Draw crosshair
     drawCrosshair();
+
+    // Draw active emojis
+    drawEmojis();
 
     // Draw ultimate hold bar (if charging)
     if (isHoldingUltimate) {
@@ -1231,3 +1261,42 @@ function showGameOver(winner) {
     document.getElementById('final-red-score').textContent = redScore;
     document.getElementById('final-blue-score').textContent = blueScore;
 }
+
+// ============================================
+// EMOJI SYSTEM
+// ============================================
+
+function drawEmojis() {
+    ctx.textAlign = 'center';
+    ctx.font = '30px Arial';
+
+    activeEmojis.forEach(emoji => {
+        ctx.fillStyle = `rgba(255, 255, 255, ${1 - (Date.now() - emoji.startTime) / 2000})`;
+        ctx.fillText(emoji.emoji, emoji.x, emoji.y - 40 - emoji.offsetY);
+    });
+}
+
+function updateEmojis() {
+    const now = Date.now();
+    for (let i = activeEmojis.length - 1; i >= 0; i--) {
+        const emoji = activeEmojis[i];
+        const elapsed = now - emoji.startTime;
+
+        if (elapsed > 2000) {
+            activeEmojis.splice(i, 1);
+        } else {
+            // Float up logic
+            emoji.offsetY += 0.5;
+        }
+    }
+}
+
+// ============================================
+// WEAPON SYSTEM
+// ============================================
+
+window.selectWeapon = function (weaponType) {
+    if (!socket) return;
+    socket.emit('selectWeapon', { weapon: weaponType });
+    document.getElementById('weapon-overlay').classList.remove('active');
+};
