@@ -27,7 +27,17 @@ const CONFIG = {
     SCORE_TO_WIN: 3,
     MATCH_TIME: 180, // 3 minutes
     RESPAWN_TIME: 2000,
-    HIT_STUN_TIME: 500
+    HIT_STUN_TIME: 500,
+    // Ultimate settings
+    ULTIMATE_CHARGE_ON_HIT: 25,
+    ULTIMATE_CHARGE_ON_ENEMY_SCORE: 75,
+    ULTIMATE_HOLD_TIME: 1500, // Hold for 1.5 seconds to charge
+    ULTIMATE_DAMAGE: 100, // One shot kill
+    // Health pickup settings
+    HEALTH_PICKUP_SIZE: 20,
+    HEALTH_PICKUP_AMOUNT: 50,
+    HEALTH_PICKUP_SPAWN_INTERVAL: 10000, // Every 10 seconds
+    MAX_HEALTH_PICKUPS: 3
 };
 
 // Matchmaking Queue
@@ -57,7 +67,11 @@ function createGameState(player1Id, player2Id) {
                 velocityX: 0,
                 velocityY: 0,
                 isDead: false,
-                lastHit: 0
+                lastHit: 0,
+                ultimateCharge: 0,
+                isChargingUltimate: false,
+                ultimateHoldStart: 0,
+                ultimateHoldProgress: 0
             },
             [player2Id]: {
                 id: player2Id,
@@ -71,7 +85,11 @@ function createGameState(player1Id, player2Id) {
                 velocityX: 0,
                 velocityY: 0,
                 isDead: false,
-                lastHit: 0
+                lastHit: 0,
+                ultimateCharge: 0,
+                isChargingUltimate: false,
+                ultimateHoldStart: 0,
+                ultimateHoldProgress: 0
             }
         },
         flags: {
@@ -79,8 +97,11 @@ function createGameState(player1Id, player2Id) {
             blue: { x: CONFIG.MAP_WIDTH - 80, y: CONFIG.MAP_HEIGHT / 2, isHome: true, carrier: null }
         },
         bullets: [],
+        ultimateBeams: [],
+        healthPickups: [],
         obstacles: generateObstacles(),
         startTime: Date.now(),
+        lastHealthPickupSpawn: Date.now(),
         matchTime: CONFIG.MATCH_TIME,
         gameOver: false,
         winner: null
@@ -127,6 +148,47 @@ function distance(x1, y1, x2, y2) {
     return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 }
 
+// Check if a point is on a line segment (for ray collision)
+function pointOnLineSegment(px, py, x1, y1, x2, y2, threshold = 15) {
+    const d1 = distance(px, py, x1, y1);
+    const d2 = distance(px, py, x2, y2);
+    const lineLen = distance(x1, y1, x2, y2);
+    const buffer = threshold;
+
+    if (d1 + d2 >= lineLen - buffer && d1 + d2 <= lineLen + buffer) {
+        return true;
+    }
+    return false;
+}
+
+// Spawn health pickup at random location
+function spawnHealthPickup(state) {
+    // Find a valid spawn location (not on obstacles, not too close to flags)
+    let attempts = 0;
+    while (attempts < 20) {
+        const x = 200 + Math.random() * (CONFIG.MAP_WIDTH - 400);
+        const y = 100 + Math.random() * (CONFIG.MAP_HEIGHT - 200);
+
+        // Check not on obstacle
+        if (!collidesWithObstacle(x, y, CONFIG.HEALTH_PICKUP_SIZE, state.obstacles)) {
+            // Check not too close to flags
+            const distToRedFlag = distance(x, y, state.flags.red.x, state.flags.red.y);
+            const distToBlueFlag = distance(x, y, state.flags.blue.x, state.flags.blue.y);
+
+            if (distToRedFlag > 100 && distToBlueFlag > 100) {
+                return {
+                    id: Math.random().toString(36).substr(2, 9),
+                    x: x,
+                    y: y,
+                    spawnTime: Date.now()
+                };
+            }
+        }
+        attempts++;
+    }
+    return null;
+}
+
 // Game Room class
 class GameRoom {
     constructor(roomId, player1Socket, player2Socket) {
@@ -144,13 +206,6 @@ class GameRoom {
         this.gameLoop = setInterval(() => this.update(), 1000 / CONFIG.TICK_RATE);
 
         // Send initial state
-        this.broadcast('gameStart', {
-            roomId: this.roomId,
-            state: this.state,
-            config: CONFIG,
-            yourId: null // Will be set per-player
-        });
-
         player1Socket.emit('gameStart', {
             roomId: this.roomId,
             state: this.state,
@@ -177,6 +232,7 @@ class GameRoom {
     handleShoot(playerId, angle) {
         const player = this.state.players[playerId];
         if (!player || player.isDead) return;
+        if (player.isChargingUltimate) return; // Can't shoot while charging
 
         const bullet = {
             id: Math.random().toString(36).substr(2, 9),
@@ -192,6 +248,132 @@ class GameRoom {
         this.state.bullets.push(bullet);
     }
 
+    // Start charging ultimate (SPACE pressed)
+    handleUltimateStart(playerId, angle) {
+        const player = this.state.players[playerId];
+        if (!player || player.isDead) return;
+        if (player.ultimateCharge < 100) return; // Not fully charged
+        if (player.isChargingUltimate) return; // Already charging
+
+        player.isChargingUltimate = true;
+        player.ultimateHoldStart = Date.now();
+        player.ultimateHoldProgress = 0;
+        player.ultimateAngle = angle;
+
+        this.broadcast('ultimateCharging', {
+            playerId: playerId,
+            angle: angle
+        });
+    }
+
+    // Release ultimate (SPACE released)
+    handleUltimateRelease(playerId, angle) {
+        const player = this.state.players[playerId];
+        if (!player || !player.isChargingUltimate) return;
+
+        const holdTime = Date.now() - player.ultimateHoldStart;
+
+        // Only fire if held long enough
+        if (holdTime >= CONFIG.ULTIMATE_HOLD_TIME) {
+            this.fireUltimate(playerId, angle);
+        } else {
+            // Cancelled - didn't hold long enough
+            player.isChargingUltimate = false;
+            player.ultimateHoldProgress = 0;
+            this.broadcast('ultimateCancelled', { playerId: playerId });
+        }
+    }
+
+    fireUltimate(playerId, angle) {
+        const player = this.state.players[playerId];
+        if (!player) return;
+
+        player.isChargingUltimate = false;
+        player.ultimateCharge = 0;
+        player.ultimateHoldProgress = 0;
+
+        // Calculate ray endpoint (goes through entire map)
+        const rayLength = 2000;
+        const endX = player.x + Math.cos(angle) * rayLength;
+        const endY = player.y + Math.sin(angle) * rayLength;
+
+        const beam = {
+            id: Math.random().toString(36).substr(2, 9),
+            ownerId: playerId,
+            team: player.team,
+            startX: player.x,
+            startY: player.y,
+            endX: endX,
+            endY: endY,
+            angle: angle,
+            firedTime: Date.now()
+        };
+
+        this.state.ultimateBeams.push(beam);
+
+        // Check for hits (ray goes through walls!)
+        for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
+            if (targetId === playerId || targetPlayer.isDead) continue;
+            if (targetPlayer.team === player.team) continue;
+
+            if (pointOnLineSegment(
+                targetPlayer.x, targetPlayer.y,
+                beam.startX, beam.startY,
+                beam.endX, beam.endY,
+                CONFIG.PLAYER_SIZE
+            )) {
+                this.hitPlayerWithUltimate(targetId, playerId);
+            }
+        }
+
+        this.broadcast('ultimateFired', {
+            playerId: playerId,
+            beam: beam
+        });
+
+        // Remove beam after display time
+        setTimeout(() => {
+            const index = this.state.ultimateBeams.findIndex(b => b.id === beam.id);
+            if (index !== -1) {
+                this.state.ultimateBeams.splice(index, 1);
+            }
+        }, 500);
+    }
+
+    hitPlayerWithUltimate(playerId, attackerId) {
+        const player = this.state.players[playerId];
+
+        player.health = 0;
+        player.isDead = true;
+
+        if (player.hasFlag) {
+            const enemyTeam = player.team === 'red' ? 'blue' : 'red';
+            this.state.flags[enemyTeam].x = player.x;
+            this.state.flags[enemyTeam].y = player.y;
+            this.state.flags[enemyTeam].isHome = false;
+            this.state.flags[enemyTeam].carrier = null;
+            player.hasFlag = false;
+        }
+
+        setTimeout(() => {
+            this.respawnPlayer(playerId);
+        }, CONFIG.RESPAWN_TIME);
+
+        this.broadcast('playerHit', { playerId, attackerId, health: 0, isUltimate: true });
+    }
+
+    addUltimateCharge(playerId, amount) {
+        const player = this.state.players[playerId];
+        if (!player) return;
+
+        player.ultimateCharge = Math.min(100, player.ultimateCharge + amount);
+
+        this.broadcast('ultimateCharge', {
+            playerId: playerId,
+            charge: player.ultimateCharge
+        });
+    }
+
     update() {
         if (this.state.gameOver) return;
 
@@ -199,10 +381,21 @@ class GameRoom {
         const elapsed = Math.floor((now - this.state.startTime) / 1000);
         const timeLeft = CONFIG.MATCH_TIME - elapsed;
 
-        // Check time over
         if (timeLeft <= 0) {
             this.endGame();
             return;
+        }
+
+        // Spawn health pickups periodically
+        if (now - this.state.lastHealthPickupSpawn >= CONFIG.HEALTH_PICKUP_SPAWN_INTERVAL) {
+            if (this.state.healthPickups.length < CONFIG.MAX_HEALTH_PICKUPS) {
+                const pickup = spawnHealthPickup(this.state);
+                if (pickup) {
+                    this.state.healthPickups.push(pickup);
+                    this.broadcast('healthPickupSpawned', pickup);
+                }
+            }
+            this.state.lastHealthPickupSpawn = now;
         }
 
         // Update players
@@ -213,26 +406,36 @@ class GameRoom {
             let newX = player.x;
             let newY = player.y;
 
-            // Handle movement
-            if (input.up) newY -= CONFIG.PLAYER_SPEED;
-            if (input.down) newY += CONFIG.PLAYER_SPEED;
-            if (input.left) newX -= CONFIG.PLAYER_SPEED;
-            if (input.right) newX += CONFIG.PLAYER_SPEED;
+            // Handle movement (slower while charging ultimate)
+            const speedMod = player.isChargingUltimate ? 0.3 : 1;
+            if (input.up) newY -= CONFIG.PLAYER_SPEED * speedMod;
+            if (input.down) newY += CONFIG.PLAYER_SPEED * speedMod;
+            if (input.left) newX -= CONFIG.PLAYER_SPEED * speedMod;
+            if (input.right) newX += CONFIG.PLAYER_SPEED * speedMod;
 
-            // Check bounds
             newX = Math.max(CONFIG.PLAYER_SIZE / 2, Math.min(CONFIG.MAP_WIDTH - CONFIG.PLAYER_SIZE / 2, newX));
             newY = Math.max(CONFIG.PLAYER_SIZE / 2, Math.min(CONFIG.MAP_HEIGHT - CONFIG.PLAYER_SIZE / 2, newY));
 
-            // Check obstacle collision
             if (!collidesWithObstacle(newX, newY, CONFIG.PLAYER_SIZE, this.state.obstacles)) {
                 player.x = newX;
                 player.y = newY;
             }
 
-            // Update angle
             if (input.angle !== undefined) {
                 player.angle = input.angle;
+                if (player.isChargingUltimate) {
+                    player.ultimateAngle = input.angle;
+                }
             }
+
+            // Update ultimate hold progress
+            if (player.isChargingUltimate) {
+                const holdTime = now - player.ultimateHoldStart;
+                player.ultimateHoldProgress = Math.min(100, (holdTime / CONFIG.ULTIMATE_HOLD_TIME) * 100);
+            }
+
+            // Check health pickup
+            this.checkHealthPickup(player);
 
             // Check flag pickup
             this.checkFlagPickup(player);
@@ -254,30 +457,43 @@ class GameRoom {
         });
     }
 
+    checkHealthPickup(player) {
+        for (let i = this.state.healthPickups.length - 1; i >= 0; i--) {
+            const pickup = this.state.healthPickups[i];
+            if (distance(player.x, player.y, pickup.x, pickup.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.HEALTH_PICKUP_SIZE / 2)) {
+                // Pick up health
+                player.health = Math.min(100, player.health + CONFIG.HEALTH_PICKUP_AMOUNT);
+                this.state.healthPickups.splice(i, 1);
+
+                this.broadcast('healthPickedUp', {
+                    playerId: player.id,
+                    pickupId: pickup.id,
+                    newHealth: player.health
+                });
+            }
+        }
+    }
+
     updateBullets() {
         const bulletsToRemove = [];
 
         for (let i = 0; i < this.state.bullets.length; i++) {
             const bullet = this.state.bullets[i];
 
-            // Move bullet
             bullet.x += bullet.velocityX;
             bullet.y += bullet.velocityY;
 
-            // Check out of bounds
             if (bullet.x < 0 || bullet.x > CONFIG.MAP_WIDTH ||
                 bullet.y < 0 || bullet.y > CONFIG.MAP_HEIGHT) {
                 bulletsToRemove.push(i);
                 continue;
             }
 
-            // Check obstacle collision
             if (collidesWithObstacle(bullet.x, bullet.y, CONFIG.BULLET_SIZE, this.state.obstacles)) {
                 bulletsToRemove.push(i);
                 continue;
             }
 
-            // Check player hit
             for (const [playerId, player] of Object.entries(this.state.players)) {
                 if (playerId === bullet.ownerId || player.isDead) continue;
                 if (player.team === bullet.team) continue;
@@ -290,7 +506,6 @@ class GameRoom {
             }
         }
 
-        // Remove bullets (reverse order to maintain indices)
         for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
             this.state.bullets.splice(bulletsToRemove[i], 1);
         }
@@ -298,6 +513,7 @@ class GameRoom {
 
     hitPlayer(playerId, attackerId) {
         const player = this.state.players[playerId];
+        const attacker = this.state.players[attackerId];
         const now = Date.now();
 
         if (now - player.lastHit < CONFIG.HIT_STUN_TIME) return;
@@ -305,11 +521,15 @@ class GameRoom {
         player.health -= 34;
         player.lastHit = now;
 
+        // Add ultimate charge to attacker (25%)
+        if (attacker) {
+            this.addUltimateCharge(attackerId, CONFIG.ULTIMATE_CHARGE_ON_HIT);
+        }
+
         if (player.health <= 0) {
             player.isDead = true;
             player.health = 0;
 
-            // Drop flag if carrying
             if (player.hasFlag) {
                 const enemyTeam = player.team === 'red' ? 'blue' : 'red';
                 this.state.flags[enemyTeam].x = player.x;
@@ -319,7 +539,6 @@ class GameRoom {
                 player.hasFlag = false;
             }
 
-            // Respawn after delay
             setTimeout(() => {
                 this.respawnPlayer(playerId);
             }, CONFIG.RESPAWN_TIME);
@@ -335,7 +554,6 @@ class GameRoom {
         player.isDead = false;
         player.health = 100;
 
-        // Respawn at team base
         if (player.team === 'red') {
             player.x = 100;
             player.y = CONFIG.MAP_HEIGHT / 2;
@@ -348,12 +566,11 @@ class GameRoom {
     }
 
     checkFlagPickup(player) {
-        // Can only pick up enemy flag
         const enemyTeam = player.team === 'red' ? 'blue' : 'red';
         const flag = this.state.flags[enemyTeam];
 
-        if (flag.carrier) return; // Already being carried
-        if (player.hasFlag) return; // Already has a flag
+        if (flag.carrier) return;
+        if (player.hasFlag) return;
 
         if (distance(player.x, player.y, flag.x, flag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE / 2)) {
             flag.carrier = player.id;
@@ -365,18 +582,22 @@ class GameRoom {
     checkFlagCapture(player) {
         if (!player.hasFlag) return;
 
-        // Check if at home base with enemy flag
         const homeFlag = this.state.flags[player.team];
 
         if (distance(player.x, player.y, homeFlag.x, homeFlag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE)) {
-            // Only capture if own flag is home
             if (homeFlag.isHome) {
                 player.score++;
                 player.hasFlag = false;
 
-                // Reset enemy flag
                 const enemyTeam = player.team === 'red' ? 'blue' : 'red';
                 this.resetFlag(enemyTeam);
+
+                // Give ultimate charge to enemy (75%)
+                for (const [targetId, targetPlayer] of Object.entries(this.state.players)) {
+                    if (targetPlayer.team !== player.team) {
+                        this.addUltimateCharge(targetId, CONFIG.ULTIMATE_CHARGE_ON_ENEMY_SCORE);
+                    }
+                }
 
                 this.broadcast('flagCapture', {
                     playerId: player.id,
@@ -384,7 +605,6 @@ class GameRoom {
                     team: player.team
                 });
 
-                // Check win condition
                 if (player.score >= CONFIG.SCORE_TO_WIN) {
                     this.endGame(player.id);
                 }
@@ -424,7 +644,6 @@ class GameRoom {
         if (winnerId) {
             this.state.winner = winnerId;
         } else {
-            // Time over - determine winner by score
             const players = Object.values(this.state.players);
             if (players[0].score > players[1].score) {
                 this.state.winner = players[0].id;
@@ -440,17 +659,14 @@ class GameRoom {
             finalState: this.state
         });
 
-        // Clean up
         clearInterval(this.gameLoop);
 
-        // Remove room after delay
         setTimeout(() => {
             gameRooms.delete(this.roomId);
         }, 5000);
     }
 
     handleDisconnect(playerId) {
-        // Other player wins by default
         const otherPlayer = Object.keys(this.state.players).find(id => id !== playerId);
         if (otherPlayer && !this.state.gameOver) {
             this.endGame(otherPlayer);
@@ -465,12 +681,9 @@ class GameRoom {
 io.on('connection', (socket) => {
     console.log(`Player connected: ${socket.id}`);
 
-    // Join matchmaking
     socket.on('joinMatchmaking', () => {
-        // Check if already in queue
         if (matchmakingQueue.find(s => s.id === socket.id)) return;
 
-        // Check if already in a game
         for (const room of gameRooms.values()) {
             if (room.players.find(p => p.id === socket.id)) return;
         }
@@ -480,7 +693,6 @@ io.on('connection', (socket) => {
 
         console.log(`Player ${socket.id} joined queue. Queue size: ${matchmakingQueue.length}`);
 
-        // Try to match
         if (matchmakingQueue.length >= 2) {
             const player1 = matchmakingQueue.shift();
             const player2 = matchmakingQueue.shift();
@@ -493,13 +705,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Leave matchmaking
     socket.on('leaveMatchmaking', () => {
         matchmakingQueue = matchmakingQueue.filter(s => s.id !== socket.id);
         socket.emit('matchmakingLeft');
     });
 
-    // Player input
     socket.on('playerInput', (input) => {
         for (const room of gameRooms.values()) {
             if (room.state.players[socket.id]) {
@@ -509,7 +719,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Player shoot
     socket.on('playerShoot', (data) => {
         for (const room of gameRooms.values()) {
             if (room.state.players[socket.id]) {
@@ -519,14 +728,31 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Disconnect handling
+    // Ultimate start (SPACE pressed)
+    socket.on('ultimateStart', (data) => {
+        for (const room of gameRooms.values()) {
+            if (room.state.players[socket.id]) {
+                room.handleUltimateStart(socket.id, data.angle);
+                break;
+            }
+        }
+    });
+
+    // Ultimate release (SPACE released)
+    socket.on('ultimateRelease', (data) => {
+        for (const room of gameRooms.values()) {
+            if (room.state.players[socket.id]) {
+                room.handleUltimateRelease(socket.id, data.angle);
+                break;
+            }
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log(`Player disconnected: ${socket.id}`);
 
-        // Remove from matchmaking
         matchmakingQueue = matchmakingQueue.filter(s => s.id !== socket.id);
 
-        // Handle game disconnect
         for (const room of gameRooms.values()) {
             if (room.state.players[socket.id]) {
                 room.handleDisconnect(socket.id);
@@ -536,7 +762,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Health check endpoint
 app.get('/', (req, res) => {
     res.json({
         status: 'ok',

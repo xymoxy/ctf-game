@@ -531,6 +531,66 @@ body {
     }
 }
 
+/* Ultimate Bar */
+.ultimate-bar-container {
+    position: fixed;
+    bottom: 5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    z-index: 100;
+    transition: all 0.3s ease;
+}
+
+.ultimate-bar-container.ready {
+    animation: ultReadyPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes ultReadyPulse {
+    from {
+        filter: drop-shadow(0 0 5px var(--accent-gold));
+    }
+
+    to {
+        filter: drop-shadow(0 0 20px var(--accent-gold));
+    }
+}
+
+.ultimate-bar {
+    width: 150px;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 6px;
+    border: 2px solid rgba(153, 51, 255, 0.5);
+    overflow: hidden;
+}
+
+.ultimate-bar-container.ready .ultimate-bar {
+    border-color: var(--accent-gold);
+}
+
+.ultimate-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #9933ff, #6600cc);
+    border-radius: 4px;
+    transition: width 0.2s ease;
+}
+
+.ultimate-text {
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.ultimate-bar-container.ready .ultimate-text {
+    color: var(--accent-gold);
+}
+
 /* ============================================
    GAME OVER SCREEN
    ============================================ */
