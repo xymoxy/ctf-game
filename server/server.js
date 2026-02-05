@@ -566,6 +566,19 @@ class GameRoom {
     }
 
     checkFlagPickup(player) {
+        // First check: Can we RETURN our own flag?
+        const ownFlag = this.state.flags[player.team];
+        if (!ownFlag.isHome && !ownFlag.carrier) {
+            // Our flag is dropped on the ground
+            if (distance(player.x, player.y, ownFlag.x, ownFlag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE / 2)) {
+                // Return our flag to base!
+                this.resetFlag(player.team);
+                this.broadcast('flagReturned', { playerId: player.id, flagTeam: player.team });
+                return;
+            }
+        }
+
+        // Second check: Can we PICKUP enemy flag?
         const enemyTeam = player.team === 'red' ? 'blue' : 'red';
         const flag = this.state.flags[enemyTeam];
 

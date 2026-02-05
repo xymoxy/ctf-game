@@ -200,6 +200,16 @@ function initSocket() {
         );
     });
 
+    socket.on('flagReturned', (data) => {
+        // Big celebration effect for flag return
+        const flag = gameState.flags[data.flagTeam];
+        const color = data.flagTeam === 'red' ? '#ff3366' : '#00ccff';
+        for (let i = 0; i < 25; i++) {
+            addParticleEffect(flag.x, flag.y, color, 2);
+        }
+        addParticleEffect(flag.x, flag.y, '#ffffff', 10);
+    });
+
     socket.on('flagCapture', (data) => {
         if (data.playerId === myId) {
             document.getElementById('flag-indicator').style.display = 'none';
