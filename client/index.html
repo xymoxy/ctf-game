@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚔️ CTF Arena - 1v1 Capture The Flag</title>
+    <meta name="description" content="Online 1v1 Capture The Flag multiplayer game - Play with friends!">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <!-- Main Menu -->
+    <div id="menu-screen" class="screen active">
+        <div class="menu-container">
+            <div class="logo-container">
+                <h1 class="game-logo">⚔️ CTF ARENA</h1>
+                <p class="game-subtitle">1v1 Capture The Flag</p>
+            </div>
+
+            <div class="menu-buttons">
+                <button id="play-btn" class="btn btn-primary">
+                    <span class="btn-icon">🎮</span>
+                    <span class="btn-text">OYUNA GİR</span>
+                </button>
+            </div>
+
+            <div class="instructions">
+                <h3>🎯 Nasıl Oynanır?</h3>
+                <div class="instruction-grid">
+                    <div class="instruction-item">
+                        <span class="key">WASD</span>
+                        <span>Hareket</span>
+                    </div>
+                    <div class="instruction-item">
+                        <span class="key">MOUSE</span>
+                        <span>Nişan Al</span>
+                    </div>
+                    <div class="instruction-item">
+                        <span class="key">CLICK</span>
+                        <span>Ateş Et</span>
+                    </div>
+                    <div class="instruction-item">
+                        <span class="key">🏴</span>
+                        <span>Bayrağı Kap!</span>
+                    </div>
+                </div>
+                <p class="win-info">🏆 3 bayrak yakala = KAZAN!</p>
+            </div>
+
+            <div class="connection-status" id="connection-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Sunucuya bağlanılıyor...</span>
+            </div>
+        </div>
+
+        <div class="background-effects">
+            <div class="grid-overlay"></div>
+        </div>
+    </div>
+
+    <!-- Matchmaking Screen -->
+    <div id="matchmaking-screen" class="screen">
+        <div class="matchmaking-container">
+            <div class="searching-animation">
+                <div class="pulse-ring"></div>
+                <div class="pulse-ring delay-1"></div>
+                <div class="pulse-ring delay-2"></div>
+                <div class="search-icon">🔍</div>
+            </div>
+
+            <h2 class="matchmaking-title">RAKİP ARANIYOR</h2>
+            <p class="matchmaking-subtitle">Matchmaking aktif...</p>
+
+            <div class="queue-info">
+                <span id="queue-position">Sırada bekleniyor</span>
+            </div>
+
+            <button id="cancel-matchmaking" class="btn btn-secondary">
+                <span>İPTAL</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen">
+        <div class="game-hud">
+            <div class="hud-left">
+                <div class="player-info red-team">
+                    <span class="team-icon">🔴</span>
+                    <span class="player-score" id="red-score">0</span>
+                </div>
+            </div>
+
+            <div class="hud-center">
+                <div class="timer" id="game-timer">3:00</div>
+                <div class="match-info">İlk 3'e ulaş!</div>
+            </div>
+
+            <div class="hud-right">
+                <div class="player-info blue-team">
+                    <span class="player-score" id="blue-score">0</span>
+                    <span class="team-icon">🔵</span>
+                </div>
+            </div>
+        </div>
+
+        <canvas id="game-canvas"></canvas>
+
+        <div class="health-bar-container">
+            <div class="health-bar" id="health-bar">
+                <div class="health-fill" id="health-fill"></div>
+            </div>
+            <span class="health-text" id="health-text">100</span>
+        </div>
+
+        <div class="flag-indicator" id="flag-indicator" style="display: none;">
+            🏴 BAYRAK SENDE!
+        </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameover-screen" class="screen">
+        <div class="gameover-container">
+            <div class="result-icon" id="result-icon">🏆</div>
+            <h2 class="result-title" id="result-title">KAZANDIN!</h2>
+            <p class="result-subtitle" id="result-subtitle">Tebrikler!</p>
+
+            <div class="final-score">
+                <div class="score-box red">
+                    <span class="score-label">Kırmızı</span>
+                    <span class="score-value" id="final-red-score">0</span>
+                </div>
+                <span class="vs">VS</span>
+                <div class="score-box blue">
+                    <span class="score-label">Mavi</span>
+                    <span class="score-value" id="final-blue-score">0</span>
+                </div>
+            </div>
+
+            <button id="play-again-btn" class="btn btn-primary">
+                <span class="btn-icon">🔄</span>
+                <span class="btn-text">TEKRAR OYNA</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="game.js"></script>
+</body>
+
+</html>
