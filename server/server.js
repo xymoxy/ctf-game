@@ -594,20 +594,7 @@ class GameRoom {
 
     // Release ultimate (SPACE released)
     handleUltimateRelease(playerId, angle) {
-        const player = this.state.players[playerId];
-        if (!player || !player.isChargingUltimate) return;
-
-        const holdTime = Date.now() - player.ultimateHoldStart;
-
-        // Only fire if held long enough
-        if (holdTime >= CONFIG.ULTIMATE_HOLD_TIME) {
-            this.fireUltimate(playerId, angle);
-        } else {
-            // Cancelled - didn't hold long enough
-            player.isChargingUltimate = false;
-            player.ultimateHoldProgress = 0;
-            this.broadcast('ultimateCancelled', { playerId: playerId });
-        }
+        return;
     }
 
     fireUltimate(playerId, angle) {
@@ -689,15 +676,7 @@ class GameRoom {
     }
 
     addUltimateCharge(playerId, amount) {
-        const player = this.state.players[playerId];
-        if (!player) return;
-
-        player.ultimateCharge = Math.min(100, player.ultimateCharge + amount);
-
-        this.broadcast('ultimateCharge', {
-            playerId: playerId,
-            charge: player.ultimateCharge
-        });
+        return;
     }
 
     update() {
@@ -730,15 +709,14 @@ class GameRoom {
 
             const input = this.inputs[playerId] || {};
 
-            // Handle movement (slower while charging ultimate)
-            const speedMod = player.isChargingUltimate ? 0.3 : 1;
+            // Handle movement
             let moveX = 0;
             let moveY = 0;
 
-            if (input.up) moveY -= CONFIG.PLAYER_SPEED * speedMod;
-            if (input.down) moveY += CONFIG.PLAYER_SPEED * speedMod;
-            if (input.left) moveX -= CONFIG.PLAYER_SPEED * speedMod;
-            if (input.right) moveX += CONFIG.PLAYER_SPEED * speedMod;
+            if (input.up) moveY -= CONFIG.PLAYER_SPEED;
+            if (input.down) moveY += CONFIG.PLAYER_SPEED;
+            if (input.left) moveX -= CONFIG.PLAYER_SPEED;
+            if (input.right) moveX += CONFIG.PLAYER_SPEED;
 
             // Try X movement separately
             let newX = player.x + moveX;
@@ -756,15 +734,6 @@ class GameRoom {
 
             if (input.angle !== undefined) {
                 player.angle = input.angle;
-                if (player.isChargingUltimate) {
-                    player.ultimateAngle = input.angle;
-                }
-            }
-
-            // Update ultimate hold progress
-            if (player.isChargingUltimate) {
-                const holdTime = now - player.ultimateHoldStart;
-                player.ultimateHoldProgress = Math.min(100, (holdTime / CONFIG.ULTIMATE_HOLD_TIME) * 100);
             }
 
             // Check health pickup
@@ -915,11 +884,6 @@ class GameRoom {
 
         player.health -= damage;
         player.lastHit = now;
-
-        // Add ultimate charge to attacker (25%)
-        if (attacker) {
-            this.addUltimateCharge(attackerId, CONFIG.ULTIMATE_CHARGE_ON_HIT);
-        }
 
         if (player.health <= 0) {
             player.isDead = true;
@@ -1201,31 +1165,13 @@ io.on('connection', (socket) => {
     // Ultimate start (SPACE pressed)
     socket.on('ultimateStart', (data) => {
         if (isSocketRateLimited(socket, 'ultimateStart')) return;
-
-        const angle = extractAngle(data);
-        if (angle === null) {
-            return;
-        }
-
-        const room = findPlayerRoom(socket.id);
-        if (room) {
-            room.handleUltimateStart(socket.id, angle);
-        }
+        return;
     });
 
     // Ultimate release (SPACE released)
     socket.on('ultimateRelease', (data) => {
         if (isSocketRateLimited(socket, 'ultimateRelease')) return;
-
-        const angle = extractAngle(data);
-        if (angle === null) {
-            return;
-        }
-
-        const room = findPlayerRoom(socket.id);
-        if (room) {
-            room.handleUltimateRelease(socket.id, angle);
-        }
+        return;
     });
 
     // Send emoji (1-2-3-4 keys)

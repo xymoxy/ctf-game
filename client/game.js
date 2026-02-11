@@ -13,12 +13,6 @@ let myTeam = null;
 let config = null;
 let isConnected = false;
 let currentScreen = 'menu';
-let myUltimateCharge = 0;
-
-// Ultimate charging state
-let isHoldingUltimate = false;
-let ultimateHoldStart = 0;
-let ultimateHoldProgress = 0;
 let lastShotTime = 0;
 let currentPing = 0;
 let currentWeapon = 'pistol'; // Default local tracking
@@ -52,7 +46,6 @@ let isMouseDown = false;
 // Assets & Effects
 const particles = [];
 const hitEffects = [];
-const activeBeams = [];
 const healthPickups = [];
 const activeEmojis = [];
 const activeExplosions = [];
@@ -145,7 +138,6 @@ function initSocket() {
         gameState = data.state;
         config = data.config;
         myTeam = gameState.players[myId]?.team;
-        myUltimateCharge = 0;
         healthPickups.length = 0;
 
         // Copy initial health pickups
@@ -155,7 +147,6 @@ function initSocket() {
 
         showScreen('game');
         updateHUD();
-        updateUltimateUI();
         document.getElementById('weapon-overlay').classList.add('active'); // Show weapon selection
     });
 
@@ -253,31 +244,6 @@ function initSocket() {
         }
     });
 
-    socket.on('ultimateCharge', (data) => {
-        if (data.playerId === myId) {
-            myUltimateCharge = data.charge;
-            updateUltimateUI();
-        }
-    });
-
-    socket.on('ultimateCharging', (data) => {
-        console.log('Player charging ultimate:', data.playerId);
-        // Show charging indicator on player
-        if (gameState?.players[data.playerId]) {
-            gameState.players[data.playerId].isChargingUltimate = true;
-        }
-    });
-
-    socket.on('ultimateCancelled', (data) => {
-        if (gameState?.players[data.playerId]) {
-            gameState.players[data.playerId].isChargingUltimate = false;
-        }
-        if (data.playerId === myId) {
-            isHoldingUltimate = false;
-            ultimateHoldProgress = 0;
-        }
-    });
-
     socket.on('playerEmoji', (data) => {
         activeEmojis.push({
             x: data.x,
@@ -322,37 +288,6 @@ function initSocket() {
         }
     });
 
-    socket.on('ultimateFired', (data) => {
-        console.log('Ultimate fired!', data);
-
-        if (gameState?.players[data.playerId]) {
-            gameState.players[data.playerId].isChargingUltimate = false;
-        }
-
-        // Add beam to visual effects
-        activeBeams.push({
-            ...data.beam,
-            firedTime: Date.now()
-        });
-
-        // Big screen shake
-        shakeScreen(20);
-
-        // Add beam particles
-        const color = data.beam.team === 'red' ? '#ff3366' : '#00ccff';
-        for (let i = 0; i < 50; i++) {
-            const t = Math.random();
-            const x = data.beam.startX + (data.beam.endX - data.beam.startX) * t;
-            const y = data.beam.startY + (data.beam.endY - data.beam.startY) * t;
-            addParticleEffect(x, y, color, 2);
-        }
-
-        if (data.playerId === myId) {
-            isHoldingUltimate = false;
-            ultimateHoldProgress = 0;
-        }
-    });
-
     socket.on('gameOver', (data) => {
         console.log('Game over!', data);
         gameState = data.finalState;
@@ -389,13 +324,7 @@ function resetInput() {
     input.down = false;
     input.left = false;
     input.right = false;
-
-    // Cancel ultimate if holding
-    if (isHoldingUltimate) {
-        isHoldingUltimate = false;
-        ultimateHoldProgress = 0;
-        socket.emit('ultimateRelease', { angle: input.angle });
-    }
+    isMouseDown = false;
 }
 
 // ============================================
@@ -467,12 +396,6 @@ function handleKeyDown(e) {
         case 'ArrowRight':
             input.right = true;
             break;
-        case 'Space':
-            e.preventDefault();
-            if (!isHoldingUltimate && myUltimateCharge >= 100) {
-                startUltimate();
-            }
-            break;
         case 'Digit1':
             socket.emit('sendEmoji', { index: 0 });
             break;
@@ -506,11 +429,6 @@ function handleKeyUp(e) {
         case 'ArrowRight':
             input.right = false;
             break;
-        case 'Space':
-            if (isHoldingUltimate) {
-                releaseUltimate();
-            }
-            break;
     }
 }
 
@@ -539,10 +457,8 @@ function handleMouseDown(e) {
     if (document.getElementById('weapon-overlay').classList.contains('active')) return;
 
     if (e.button === 0) {
-        if (!isHoldingUltimate) {
-            isMouseDown = true;
-            shoot(); // Immediate shot
-        }
+        isMouseDown = true;
+        shoot(); // Immediate shot
     }
 }
 
@@ -550,11 +466,6 @@ function handleMouseUp(e) {
     if (currentScreen !== 'game') return;
     if (e.button === 0) {
         isMouseDown = false;
-
-        // Release ultimate if holding
-        if (isHoldingUltimate) {
-            releaseUltimate();
-        }
     }
 }
 
@@ -562,7 +473,6 @@ function shoot() {
     if (!gameState || !myId) return;
     const player = gameState.players[myId];
     if (!player || player.isDead) return;
-    if (player.isChargingUltimate) return;
 
     if (config?.WEAPONS) {
         // Use server config if available to keep sync, else fallback
@@ -588,39 +498,14 @@ function shoot() {
     shakeScreen(currentWeapon === 'smg' ? 2 : 5);
 }
 
-function startUltimate() {
-    if (!gameState || !myId) return;
-    const player = gameState.players[myId];
-    if (!player || player.isDead) return;
-    if (myUltimateCharge < 100) return;
-
-    isHoldingUltimate = true;
-    ultimateHoldStart = Date.now();
-    ultimateHoldProgress = 0;
-
-    socket.emit('ultimateStart', { angle: input.angle });
-}
-
-function releaseUltimate() {
-    isHoldingUltimate = false;
-    socket.emit('ultimateRelease', { angle: input.angle });
-    ultimateHoldProgress = 0;
-}
-
 // ============================================
 // GAME LOOP
 // ============================================
 
 function gameLoop() {
     if (currentScreen === 'game' && gameState) {
-        // Update ultimate hold progress
-        if (isHoldingUltimate) {
-            const holdTime = Date.now() - ultimateHoldStart;
-            ultimateHoldProgress = Math.min(100, (holdTime / (config?.ULTIMATE_HOLD_TIME || 1500)) * 100);
-        }
-
         // Handle SMG Autofire
-        if (isMouseDown && currentWeapon === 'smg' && !isHoldingUltimate) {
+        if (isMouseDown && currentWeapon === 'smg') {
             shoot();
         }
 
@@ -637,7 +522,6 @@ function gameLoop() {
         // Update effects
         updateParticles();
         updateHitEffects();
-        updateBeams();
         updateShake();
         updateEmojis();
         updateExplosions();
@@ -681,14 +565,6 @@ function render() {
     // Draw flags
     drawFlags();
 
-    // Draw ultimate charging preview (if holding)
-    if (isHoldingUltimate && myId && gameState.players[myId]) {
-        drawUltimatePreview();
-    }
-
-    // Draw ultimate beams
-    drawBeams();
-
     // Draw bullets
     drawBullets();
 
@@ -715,11 +591,6 @@ function render() {
 
     // Draw reload indicator
     drawReloadIndicator();
-
-    // Draw ultimate hold bar (if charging)
-    if (isHoldingUltimate) {
-        drawUltimateHoldBar();
-    }
 
     ctx.restore();
 }
@@ -904,130 +775,6 @@ function drawFlags() {
     });
 }
 
-function drawUltimatePreview() {
-    const player = gameState.players[myId];
-    if (!player) return;
-
-    const angle = input.angle;
-    const rayLength = 2000;
-    const endX = player.x + Math.cos(angle) * rayLength;
-    const endY = player.y + Math.sin(angle) * rayLength;
-
-    const color = player.team === 'red' ? '#ff3366' : '#00ccff';
-    const progress = ultimateHoldProgress / 100;
-    const pulse = 0.5 + Math.sin(Date.now() / 50) * 0.3;
-    const width = 5 + progress * 20;
-
-    ctx.globalAlpha = (0.2 + progress * 0.5) * pulse;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.lineCap = 'round';
-    ctx.setLineDash([20, 10]);
-    ctx.beginPath();
-    ctx.moveTo(player.x, player.y);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
-
-    // Warning text
-    if (progress < 100) {
-        ctx.fillStyle = color;
-        ctx.font = 'bold 20px Orbitron';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${Math.floor(progress)}%`, player.x, player.y - 50);
-    } else {
-        ctx.fillStyle = '#ffcc00';
-        ctx.font = 'bold 24px Orbitron';
-        ctx.textAlign = 'center';
-        ctx.fillText('RELEASE!', player.x, player.y - 50);
-    }
-}
-
-function drawUltimateHoldBar() {
-    // Center bar at top of screen
-    const barWidth = 300;
-    const barHeight = 20;
-    const x = config.MAP_WIDTH / 2 - barWidth / 2;
-    const y = 50;
-
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(x - 5, y - 5, barWidth + 10, barHeight + 10);
-
-    // Border
-    ctx.strokeStyle = ultimateHoldProgress >= 100 ? '#ffcc00' : '#9933ff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x - 5, y - 5, barWidth + 10, barHeight + 10);
-
-    // Fill
-    const fillWidth = (ultimateHoldProgress / 100) * barWidth;
-    const gradient = ctx.createLinearGradient(x, y, x + fillWidth, y);
-
-    if (ultimateHoldProgress >= 100) {
-        gradient.addColorStop(0, '#ffcc00');
-        gradient.addColorStop(1, '#ff9900');
-    } else {
-        gradient.addColorStop(0, '#9933ff');
-        gradient.addColorStop(1, '#ff3366');
-    }
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, y, fillWidth, barHeight);
-
-    // Text
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px Orbitron';
-    ctx.textAlign = 'center';
-    ctx.fillText(ultimateHoldProgress >= 100 ? '⚡ RELEASE SPACE! ⚡' : 'CHARGING...', config.MAP_WIDTH / 2, y + 14);
-}
-
-function drawBeams() {
-    const now = Date.now();
-
-    activeBeams.forEach(beam => {
-        const fadeElapsed = now - beam.firedTime;
-        const fadeProgress = Math.min(1, fadeElapsed / 500);
-        const alpha = 1 - fadeProgress;
-
-        if (alpha > 0) {
-            const color = beam.team === 'red' ? '#ff3366' : '#00ccff';
-
-            ctx.globalAlpha = alpha;
-
-            // White core
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 30 * alpha;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(beam.startX, beam.startY);
-            ctx.lineTo(beam.endX, beam.endY);
-            ctx.stroke();
-
-            // Colored outer
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 15 * alpha;
-            ctx.beginPath();
-            ctx.moveTo(beam.startX, beam.startY);
-            ctx.lineTo(beam.endX, beam.endY);
-            ctx.stroke();
-
-            ctx.globalAlpha = 1;
-        }
-    });
-}
-
-function updateBeams() {
-    const now = Date.now();
-    for (let i = activeBeams.length - 1; i >= 0; i--) {
-        const beam = activeBeams[i];
-        const fadeElapsed = now - beam.firedTime;
-        if (fadeElapsed > 500) {
-            activeBeams.splice(i, 1);
-        }
-    }
-}
-
 function drawBullets() {
     gameState.bullets.forEach(bullet => {
         const color = bullet.team === 'red' ? '#ff3366' : '#00ccff';
@@ -1094,29 +841,6 @@ function drawPlayers() {
 
         ctx.shadowBlur = 0;
 
-        // Charging indicator with shimmer
-        if (player.isChargingUltimate || (isMe && isHoldingUltimate)) {
-            const progress = isMe ? ultimateHoldProgress : (player.ultimateHoldProgress || 0);
-            const pulseSize = 25 + Math.sin(Date.now() / 50) * 5;
-
-            ctx.strokeStyle = progress >= 100 ? '#ffcc00' : '#9933ff';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, pulseSize, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // Electric effect
-            if (Math.random() < 0.3) {
-                const sparkAngle = Math.random() * Math.PI * 2;
-                const sparkDist = 20 + Math.random() * 10;
-                addParticleEffect(
-                    player.x + Math.cos(sparkAngle) * sparkDist,
-                    player.y + Math.sin(sparkAngle) * sparkDist,
-                    '#ffcc00', 1
-                );
-            }
-        }
-
         // Gun
         const gunLength = 25;
         const gunX = player.x + Math.cos(player.angle) * gunLength;
@@ -1170,15 +894,6 @@ function drawPlayers() {
         ctx.lineWidth = isMe ? 2 : 1;
         ctx.strokeRect(healthX, healthY, healthWidth, healthHeight);
 
-        // Ultimate charge indicator
-        const ultCharge = player.ultimateCharge || 0;
-        if (ultCharge > 0) {
-            const ultY = healthY + healthHeight + 3;
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(healthX, ultY, healthWidth, 3);
-            ctx.fillStyle = ultCharge >= 100 ? '#ffcc00' : '#9933ff';
-            ctx.fillRect(healthX, ultY, healthWidth * (ultCharge / 100), 3);
-        }
     });
 }
 
@@ -1199,23 +914,10 @@ function drawCrosshair() {
     ctx.lineTo(mouseX, mouseY + size);
     ctx.stroke();
 
-    // Center dot - changes when ultimate ready or charging
-    if (isHoldingUltimate) {
-        ctx.fillStyle = ultimateHoldProgress >= 100 ? '#ffcc00' : '#9933ff';
-        ctx.beginPath();
-        ctx.arc(mouseX, mouseY, 6, 0, Math.PI * 2);
-        ctx.fill();
-    } else if (myUltimateCharge >= 100) {
-        ctx.fillStyle = '#ffcc00';
-        ctx.beginPath();
-        ctx.arc(mouseX, mouseY, 4, 0, Math.PI * 2);
-        ctx.fill();
-    } else {
-        ctx.fillStyle = '#ff3366';
-        ctx.beginPath();
-        ctx.arc(mouseX, mouseY, 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
+    ctx.fillStyle = '#ff3366';
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, 2, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 // ============================================
@@ -1339,8 +1041,6 @@ function updateHUD() {
     const myPlayer = gameState.players[myId];
     if (myPlayer) {
         updateHealth(myPlayer.health);
-        myUltimateCharge = myPlayer.ultimateCharge || 0;
-        updateUltimateUI();
 
         document.getElementById('flag-indicator').style.display =
             myPlayer.hasFlag ? 'block' : 'none';
@@ -1358,25 +1058,6 @@ function updateHealth(health) {
         healthFill.style.background = 'linear-gradient(90deg, #ffcc00, #ff9900)';
     } else {
         healthFill.style.background = 'linear-gradient(90deg, #ff3366, #ff0044)';
-    }
-}
-
-function updateUltimateUI() {
-    const ultBar = document.getElementById('ultimate-bar');
-    const ultFill = document.getElementById('ultimate-fill');
-    const ultText = document.getElementById('ultimate-text');
-
-    if (ultFill && ultText) {
-        ultFill.style.width = myUltimateCharge + '%';
-        ultText.textContent = myUltimateCharge >= 100 ? 'SPACE BASILI TUT!' : `${Math.floor(myUltimateCharge)}%`;
-
-        if (myUltimateCharge >= 100) {
-            ultFill.style.background = 'linear-gradient(90deg, #ffcc00, #ff9900)';
-            ultBar.classList.add('ready');
-        } else {
-            ultFill.style.background = 'linear-gradient(90deg, #9933ff, #6600cc)';
-            ultBar.classList.remove('ready');
-        }
     }
 }
 
@@ -1409,21 +1090,21 @@ function showGameOver(winner) {
 
     if (winner === 'tie') {
         resultIcon.textContent = '🤝';
-        resultBadge.textContent = 'DENGELI MAC';
+        resultBadge.textContent = 'DENGELİ MAÇ';
         resultTitle.textContent = 'BERABERE!';
         resultTitle.className = 'result-title tie';
         resultSubtitle.textContent = 'İyi mücadele!';
         gameoverContainer.classList.add('state-tie');
     } else if (winner === myId) {
         resultIcon.textContent = '🏆';
-        resultBadge.textContent = 'GALIBIYET';
+        resultBadge.textContent = 'GALİBİYET';
         resultTitle.textContent = 'KAZANDIN!';
         resultTitle.className = 'result-title win';
         resultSubtitle.textContent = 'Tebrikler, şampiyon!';
         gameoverContainer.classList.add('state-win');
     } else {
         resultIcon.textContent = '😔';
-        resultBadge.textContent = 'MAC SONU';
+        resultBadge.textContent = 'MAÇ SONU';
         resultTitle.textContent = 'KAYBETTİN';
         resultTitle.className = 'result-title lose';
         resultSubtitle.textContent = 'Bir dahaki sefere!';

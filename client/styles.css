@@ -1378,6 +1378,11 @@ body {
    ============================================ */
 
 #game-screen {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.55rem;
+    padding-top: 0.75rem;
     background:
         radial-gradient(circle at 12% 12%, rgba(77, 185, 255, 0.2), transparent 36%),
         radial-gradient(circle at 84% 85%, rgba(255, 150, 80, 0.17), transparent 40%),
@@ -1393,9 +1398,16 @@ body {
 }
 
 #game-screen .game-hud {
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    width: min(1200px, calc(100vw - 40px));
+    border-radius: 14px;
+    z-index: 20;
     padding: 0.9rem 1.5rem;
-    background: linear-gradient(180deg, rgba(3, 16, 28, 0.86) 0%, rgba(3, 16, 28, 0.16) 100%);
-    border-bottom: 1px solid rgba(122, 203, 255, 0.22);
+    background: linear-gradient(180deg, rgba(3, 16, 28, 0.92) 0%, rgba(7, 25, 39, 0.86) 100%);
+    border: 1px solid rgba(122, 203, 255, 0.22);
     backdrop-filter: blur(6px);
 }
 
@@ -1430,18 +1442,13 @@ body {
     color: #8ed8ff;
 }
 
-#game-screen .health-bar,
-#game-screen .ultimate-bar {
+#game-screen .health-bar {
     border-color: rgba(145, 216, 255, 0.45);
     background: rgba(6, 17, 27, 0.8);
 }
 
 #game-screen .health-fill {
     background: linear-gradient(90deg, #ff7a5f 0%, #ffb364 100%);
-}
-
-#game-screen .ultimate-fill {
-    background: linear-gradient(90deg, #6ec6ff 0%, #4f9fff 100%);
 }
 
 #game-screen .flag-indicator {
