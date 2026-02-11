@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -18,20 +18,23 @@
     <!-- Main Menu -->
     <div id="menu-screen" class="screen active">
         <div class="menu-container">
+            <div class="season-chip">LIVE SEASON · CTF 1v1</div>
             <div class="logo-container">
-                <h1 class="game-logo">⚔️ CTF ARENA</h1>
-                <p class="game-subtitle">1v1 Capture The Flag</p>
+                <h1 class="game-logo">CTF ARENA</h1>
+                <p class="game-subtitle">HIZLI 1v1 BAYRAK OPERASYONU</p>
             </div>
+
+            <p class="menu-brief">Kisa turler, net kurallar, yuksek tempo. Bayragi al, usse tası, 5 sayiya ilk ulasan kazanir.</p>
 
             <div class="menu-buttons">
                 <button id="play-btn" class="btn btn-primary">
-                    <span class="btn-icon">🎮</span>
-                    <span class="btn-text">OYUNA GİR</span>
+                    <span class="btn-icon">⚔️</span>
+                    <span class="btn-text">MACA GİR</span>
                 </button>
             </div>
 
             <div class="instructions">
-                <h3>🎯 Nasıl Oynanır?</h3>
+                <h3>MAC OZETI</h3>
                 <div class="instruction-grid">
                     <div class="instruction-item">
                         <span class="key">WASD</span>
@@ -46,18 +49,26 @@
                         <span>Ateş Et</span>
                     </div>
                     <div class="instruction-item">
-                        <span class="key">SPACE</span>
-                        <span>Ultimate ⚡</span>
+                        <span class="key">1-4</span>
+                        <span>Emoji Gonder</span>
+                    </div>
+                    <div class="instruction-item">
+                        <span class="key">CTF</span>
+                        <span>5 Bayrak = Zafer</span>
+                    </div>
+                    <div class="instruction-item">
+                        <span class="key">KURAL</span>
+                        <span>Kendi Bayragin Evde Olmali</span>
                     </div>
                 </div>
-                <p class="win-info">🏆 3 bayrak yakala = KAZAN! | ⚡ Vur = %25 | Yenildiysen = %75</p>
+                <p class="win-info">Ultimate su an kapali. Kazanmak icin sadece bayrak oyunu.</p>
             </div>
 
             <div class="connection-status" id="connection-status">
                 <span class="status-dot"></span>
-                <span class="status-text">Sunucuya bağlanılıyor...</span>
+                <span class="status-text">Sunucu kontrol ediliyor...</span>
             </div>
-            <div class="version-tag">v0.2.14</div>
+            <div class="version-tag">v0.2.17</div>
         </div>
 
         <div class="background-effects">
@@ -68,22 +79,30 @@
     <!-- Matchmaking Screen -->
     <div id="matchmaking-screen" class="screen">
         <div class="matchmaking-container">
+            <div class="matchmaking-badge">LIVE MATCHMAKING</div>
             <div class="searching-animation">
-                <div class="pulse-ring"></div>
-                <div class="pulse-ring delay-1"></div>
-                <div class="pulse-ring delay-2"></div>
-                <div class="search-icon">🔍</div>
+                <div class="scanner-ring ring-1"></div>
+                <div class="scanner-ring ring-2"></div>
+                <div class="scanner-ring ring-3"></div>
+                <div class="scan-sweep"></div>
+                <div class="search-icon">VS</div>
             </div>
 
-            <h2 class="matchmaking-title">RAKİP ARANIYOR</h2>
-            <p class="matchmaking-subtitle">Matchmaking aktif...</p>
+            <h2 class="matchmaking-title">RAKIP TARAMASI AKTIF</h2>
+            <p class="matchmaking-subtitle">Benzer ping ve hazir oyuncular eslestiriliyor...</p>
 
             <div class="queue-info">
+                <span class="queue-label">Durum</span>
                 <span id="queue-position">Sırada bekleniyor</span>
             </div>
 
+            <div class="matchmaking-notes">
+                <span>Eslesme bulununca mac otomatik baslar.</span>
+                <span>Hedef: 5 bayrak. Ultimate kapali.</span>
+            </div>
+
             <button id="cancel-matchmaking" class="btn btn-secondary">
-                <span>İPTAL</span>
+                <span>ESLESMEDEN CIK</span>
             </button>
         </div>
     </div>
@@ -92,40 +111,68 @@
     <div id="game-screen" class="screen">
         <!-- Weapon Selection Overlay -->
         <div id="weapon-overlay" class="weapon-overlay">
-            <h2>SİLAHINI SEÇ</h2>
-            <div class="weapon-grid">
-                <div class="weapon-card" onclick="selectWeapon('pistol')">
-                    <div class="weapon-icon">🔫</div>
-                    <h3>Deagle</h3>
-                    <p>45 Hasar | 0.5s Hız</p>
-                    <div class="weapon-stat">
-                        <div style="width: 80%; background: #00ff88;"></div>
-                    </div>
+            <div class="weapon-overlay-card">
+                <div class="weapon-overlay-header">
+                    <span class="weapon-chip">LOADOUT PHASE</span>
+                    <h2>SILAHINI SEC</h2>
+                    <p>Tarzina uygun silah sec. Bayragi tasirken konum ve ates disiplinine dikkat et.</p>
                 </div>
-                <div class="weapon-card" onclick="selectWeapon('smg')">
-                    <div class="weapon-icon">🦟</div>
-                    <h3>SMG</h3>
-                    <p>12 Hasar | 0.1s Hız</p>
-                    <div class="weapon-stat">
-                        <div style="width: 40%; background: #00ccff;"></div>
-                    </div>
+
+                <div class="weapon-grid">
+                    <button type="button" class="weapon-card" onclick="selectWeapon('pistol')">
+                        <div class="weapon-icon">🔫</div>
+                        <h3>Deagle</h3>
+                        <p>Yuksek tek atis hasari</p>
+                        <div class="weapon-meta">
+                            <span>45 Hasar</span>
+                            <span>0.5s</span>
+                        </div>
+                        <div class="weapon-stat">
+                            <div style="width: 80%; background: #ffb472;"></div>
+                        </div>
+                    </button>
+
+                    <button type="button" class="weapon-card" onclick="selectWeapon('smg')">
+                        <div class="weapon-icon">🦟</div>
+                        <h3>SMG</h3>
+                        <p>Yakinda hizli baski</p>
+                        <div class="weapon-meta">
+                            <span>12 Hasar</span>
+                            <span>0.1s</span>
+                        </div>
+                        <div class="weapon-stat">
+                            <div style="width: 46%; background: #66d2ff;"></div>
+                        </div>
+                    </button>
+
+                    <button type="button" class="weapon-card" onclick="selectWeapon('m79')">
+                        <div class="weapon-icon">💣</div>
+                        <h3>M79</h3>
+                        <p>Alan hasari, tempo keser</p>
+                        <div class="weapon-meta">
+                            <span>Patlayici</span>
+                            <span>1.5s</span>
+                        </div>
+                        <div class="weapon-stat">
+                            <div style="width: 88%; background: #ff8b6e;"></div>
+                        </div>
+                    </button>
+
+                    <button type="button" class="weapon-card" onclick="selectWeapon('sniper')">
+                        <div class="weapon-icon">🦅</div>
+                        <h3>Sniper</h3>
+                        <p>Uzun menzil, net vurus</p>
+                        <div class="weapon-meta">
+                            <span>100 Hasar</span>
+                            <span>2.0s</span>
+                        </div>
+                        <div class="weapon-stat">
+                            <div style="width: 100%; background: #ffd56e;"></div>
+                        </div>
+                    </button>
                 </div>
-                <div class="weapon-card" onclick="selectWeapon('m79')">
-                    <div class="weapon-icon">💣</div>
-                    <h3>M79</h3>
-                    <p>Alan Hasarı | Yavaş</p>
-                    <div class="weapon-stat">
-                        <div style="width: 90%; background: #ff3366;"></div>
-                    </div>
-                </div>
-                <div class="weapon-card" onclick="selectWeapon('sniper')">
-                    <div class="weapon-icon">🦅</div>
-                    <h3>Sniper</h3>
-                    <p>85 Hasar | 2.0s Hız</p>
-                    <div class="weapon-stat">
-                        <div style="width: 100%; background: #ffcc00;"></div>
-                    </div>
-                </div>
+
+                <p class="weapon-note">Hedef: 5 bayrak. Ultimate su an kapali.</p>
             </div>
         </div>
 
@@ -180,10 +227,18 @@
 
     <!-- Game Over Screen -->
     <div id="gameover-screen" class="screen">
-        <div class="gameover-container">
-            <div class="result-icon" id="result-icon">🏆</div>
+        <div class="gameover-container" id="gameover-container">
+            <span class="result-badge" id="result-badge">MAC SONUCU</span>
+            <div class="result-icon-wrap">
+                <div class="result-icon" id="result-icon">🏆</div>
+            </div>
             <h2 class="result-title" id="result-title">KAZANDIN!</h2>
             <p class="result-subtitle" id="result-subtitle">Tebrikler!</p>
+
+            <div class="result-meta">
+                <span>HEDEF: 5 BAYRAK</span>
+                <span>KURAL: KENDI BAYRAGIN EVDE OLMALI</span>
+            </div>
 
             <div class="final-score">
                 <div class="score-box red">

@@ -824,11 +824,61 @@ function drawHealthPickups() {
     });
 }
 
+function getFlagBasePosition(team, flag) {
+    const defaultX = team === 'red' ? 80 : config.MAP_WIDTH - 80;
+    return {
+        x: Number.isFinite(flag.defX) ? flag.defX : defaultX,
+        y: Number.isFinite(flag.defY) ? flag.defY : config.MAP_HEIGHT / 2
+    };
+}
+
+function drawFlagBaseMarker(team, flag, color, glowColor) {
+    const { x, y } = getFlagBasePosition(team, flag);
+    const pulse = 1 + Math.sin(Date.now() / 220) * 0.08;
+
+    ctx.save();
+
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(x, y, 40 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = team === 'red' ? 'rgba(255, 51, 102, 0.08)' : 'rgba(0, 204, 255, 0.08)';
+    ctx.beginPath();
+    ctx.arc(x, y, 24, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + 10, y);
+    ctx.moveTo(x, y - 10);
+    ctx.lineTo(x, y + 10);
+    ctx.stroke();
+
+    if (!flag.isHome) {
+        ctx.fillStyle = color;
+        ctx.font = 'bold 12px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillText('BAYRAK NOKTASI', x, y - 48);
+    }
+
+    ctx.restore();
+}
+
 function drawFlags() {
     ['red', 'blue'].forEach(team => {
         const flag = gameState.flags[team];
         const color = team === 'red' ? '#ff3366' : '#00ccff';
         const glowColor = team === 'red' ? 'rgba(255, 51, 102, 0.5)' : 'rgba(0, 204, 255, 0.5)';
+
+        drawFlagBaseMarker(team, flag, color, glowColor);
 
         if (flag.carrier) return;
 
@@ -849,14 +899,6 @@ function drawFlags() {
         ctx.lineTo(flag.x, flag.y);
         ctx.closePath();
         ctx.fill();
-
-        if (flag.isHome) {
-            ctx.strokeStyle = glowColor;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(flag.x, flag.y, 35, 0, Math.PI * 2);
-            ctx.stroke();
-        }
 
         ctx.shadowBlur = 0;
     });
@@ -1357,25 +1399,35 @@ function updateTimer(timeLeft) {
 function showGameOver(winner) {
     showScreen('gameover');
 
+    const gameoverContainer = document.getElementById('gameover-container');
     const resultIcon = document.getElementById('result-icon');
+    const resultBadge = document.getElementById('result-badge');
     const resultTitle = document.getElementById('result-title');
     const resultSubtitle = document.getElementById('result-subtitle');
 
+    gameoverContainer.className = 'gameover-container';
+
     if (winner === 'tie') {
         resultIcon.textContent = '🤝';
+        resultBadge.textContent = 'DENGELI MAC';
         resultTitle.textContent = 'BERABERE!';
         resultTitle.className = 'result-title tie';
         resultSubtitle.textContent = 'İyi mücadele!';
+        gameoverContainer.classList.add('state-tie');
     } else if (winner === myId) {
         resultIcon.textContent = '🏆';
+        resultBadge.textContent = 'GALIBIYET';
         resultTitle.textContent = 'KAZANDIN!';
         resultTitle.className = 'result-title win';
         resultSubtitle.textContent = 'Tebrikler, şampiyon!';
+        gameoverContainer.classList.add('state-win');
     } else {
         resultIcon.textContent = '😔';
+        resultBadge.textContent = 'MAC SONU';
         resultTitle.textContent = 'KAYBETTİN';
         resultTitle.className = 'result-title lose';
         resultSubtitle.textContent = 'Bir dahaki sefere!';
+        gameoverContainer.classList.add('state-lose');
     }
 
     let redScore = 0;
