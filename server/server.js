@@ -554,6 +554,11 @@ class GameRoom {
             // Check bounds
             if (bullet.x < 0 || bullet.x > CONFIG.MAP_WIDTH ||
                 bullet.y < 0 || bullet.y > CONFIG.MAP_HEIGHT) {
+                if (bullet.explosive) {
+                    const impactX = Math.max(0, Math.min(CONFIG.MAP_WIDTH, bullet.x));
+                    const impactY = Math.max(0, Math.min(CONFIG.MAP_HEIGHT, bullet.y));
+                    this.createExplosion({ ...bullet, x: impactX, y: impactY });
+                }
                 bulletsToRemove.push(i);
                 continue;
             }
