@@ -22,6 +22,8 @@ let ultimateHoldProgress = 0;
 let lastShotTime = 0;
 let currentPing = 0;
 let currentWeapon = 'pistol'; // Default local tracking
+let lastInputSendTime = 0;
+const INPUT_SEND_INTERVAL = 33;
 let weaponConfig = {
     pistol: { cooldown: 500 },
     smg: { cooldown: 100 },
@@ -622,8 +624,12 @@ function gameLoop() {
             shoot();
         }
 
-        // Send input to server
-        socket.emit('playerInput', input);
+        // Send input to server at controlled rate (prevents network spam)
+        const now = Date.now();
+        if (now - lastInputSendTime >= INPUT_SEND_INTERVAL) {
+            socket.emit('playerInput', input);
+            lastInputSendTime = now;
+        }
 
         // Render
         render();

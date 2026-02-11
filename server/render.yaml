@@ -7,3 +7,5 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: ALLOWED_ORIGINS
+        value: https://ctf.xymoxy.com,https://www.ctf.xymoxy.com,https://xymoxy.com,https://www.xymoxy.com

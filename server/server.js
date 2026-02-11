@@ -3,15 +3,212 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
+const DEFAULT_ALLOWED_ORIGINS = [
+    'https://ctf.xymoxy.com',
+    'https://www.ctf.xymoxy.com',
+    'https://xymoxy.com',
+    'https://www.xymoxy.com'
+];
+
+if (process.env.NODE_ENV !== 'production') {
+    DEFAULT_ALLOWED_ORIGINS.push(
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173'
+    );
+}
+
+const allowedOrigins = new Set(
+    (process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',')
+        : DEFAULT_ALLOWED_ORIGINS
+    )
+        .map(origin => origin.trim())
+        .filter(Boolean)
+);
+
+function readIntEnv(key, fallback) {
+    const parsed = Number.parseInt(process.env[key] || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const SECURITY = {
+    MAX_ACTIVE_GAMES: readIntEnv('MAX_ACTIVE_GAMES', 30),
+    MAX_QUEUE_SIZE: readIntEnv('MAX_QUEUE_SIZE', 200),
+    MAX_CONNECTIONS_PER_IP: readIntEnv('MAX_CONNECTIONS_PER_IP', 6),
+    MAX_HTTP_STATUS_REQUESTS_PER_MIN: readIntEnv('MAX_HTTP_STATUS_REQUESTS_PER_MIN', 120),
+    MAX_PAYLOAD_BYTES: readIntEnv('MAX_PAYLOAD_BYTES', 10000)
+};
+
+const EVENT_LIMITS = {
+    joinMatchmaking: { limit: 8, windowMs: 10000 },
+    leaveMatchmaking: { limit: 8, windowMs: 10000 },
+    playerInput: { limit: 120, windowMs: 1000 },
+    playerShoot: { limit: 40, windowMs: 1000 },
+    ultimateStart: { limit: 20, windowMs: 10000 },
+    ultimateRelease: { limit: 20, windowMs: 10000 },
+    sendEmoji: { limit: 8, windowMs: 10000 },
+    selectWeapon: { limit: 20, windowMs: 10000 },
+    ping: { limit: 10, windowMs: 2000 }
+};
+
+const connectionsByIp = new Map();
+const statusRequestsByIp = new Map();
+
+function isOriginAllowed(origin) {
+    return typeof origin === 'string' && allowedOrigins.has(origin);
+}
+
+function isSocketOriginAllowed(origin) {
+    if (!origin) {
+        return process.env.NODE_ENV !== 'production';
+    }
+    return isOriginAllowed(origin);
+}
+
+function getIpFromForwardedHeader(forwardedHeader) {
+    if (typeof forwardedHeader !== 'string') {
+        return null;
+    }
+
+    const firstIp = forwardedHeader.split(',')[0].trim();
+    return firstIp || null;
+}
+
+function getSocketIp(socket) {
+    const forwardedIp = getIpFromForwardedHeader(socket.handshake.headers['x-forwarded-for']);
+    return forwardedIp || socket.handshake.address || 'unknown';
+}
+
+function getRequestIp(req) {
+    const forwardedIp = getIpFromForwardedHeader(req.headers['x-forwarded-for']);
+    return forwardedIp || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function consumeRateLimitBucket(store, key, limit, windowMs) {
+    if (store.size > 5000) {
+        const staleBefore = Date.now() - (windowMs * 2);
+        for (const [bucketKey, bucketValue] of store.entries()) {
+            if (bucketValue.windowStart < staleBefore) {
+                store.delete(bucketKey);
+            }
+        }
+    }
+
+    const now = Date.now();
+    const bucket = store.get(key);
+
+    if (!bucket || now - bucket.windowStart >= windowMs) {
+        store.set(key, { windowStart: now, count: 1 });
+        return true;
+    }
+
+    if (bucket.count >= limit) {
+        return false;
+    }
+
+    bucket.count += 1;
+    return true;
+}
+
+function isSocketRateLimited(socket, eventName) {
+    const limitConfig = EVENT_LIMITS[eventName];
+    if (!limitConfig) {
+        return false;
+    }
+
+    if (!socket.data.rateLimitBuckets) {
+        socket.data.rateLimitBuckets = new Map();
+    }
+
+    const allowed = consumeRateLimitBucket(
+        socket.data.rateLimitBuckets,
+        eventName,
+        limitConfig.limit,
+        limitConfig.windowMs
+    );
+
+    if (allowed) {
+        return false;
+    }
+
+    socket.data.rateLimitStrikes = (socket.data.rateLimitStrikes || 0) + 1;
+
+    if (socket.data.rateLimitStrikes >= 12) {
+        socket.emit('serverError', { message: 'Too many requests from client.' });
+        socket.disconnect(true);
+    }
+
+    return true;
+}
+
+function incrementIpConnections(ip) {
+    const nextCount = (connectionsByIp.get(ip) || 0) + 1;
+    connectionsByIp.set(ip, nextCount);
+    return nextCount;
+}
+
+function decrementIpConnections(ip) {
+    const currentCount = connectionsByIp.get(ip);
+    if (!currentCount) {
+        return;
+    }
+
+    if (currentCount <= 1) {
+        connectionsByIp.delete(ip);
+        return;
+    }
+
+    connectionsByIp.set(ip, currentCount - 1);
+}
+
 const app = express();
-app.use(cors());
+app.disable('x-powered-by');
+app.set('trust proxy', true);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || isOriginAllowed(origin)) {
+            callback(null, true);
+            return;
+        }
+
+        callback(new Error('CORS origin not allowed'));
+    },
+    methods: ['GET', 'POST']
+}));
+
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+        origin: (origin, callback) => {
+            if (isSocketOriginAllowed(origin)) {
+                callback(null, true);
+                return;
+            }
+
+            callback(new Error('Socket origin not allowed'));
+        },
+        methods: ['GET', 'POST']
+    },
+    allowRequest: (req, callback) => {
+        const origin = req.headers.origin;
+        if (isSocketOriginAllowed(origin)) {
+            callback(null, true);
+            return;
+        }
+
+        callback('Forbidden origin', false);
+    },
+    maxHttpBufferSize: SECURITY.MAX_PAYLOAD_BYTES
 });
 
 // Game Configuration
@@ -55,6 +252,86 @@ let matchmakingQueue = [];
 
 // Active Game Rooms
 const gameRooms = new Map();
+
+function removeFromMatchmaking(socketId) {
+    matchmakingQueue = matchmakingQueue.filter(queuedSocket => queuedSocket.id !== socketId);
+}
+
+function findPlayerRoom(playerId) {
+    for (const room of gameRooms.values()) {
+        if (room.state.players[playerId]) {
+            return room;
+        }
+    }
+    return null;
+}
+
+function normalizeAngle(value) {
+    const angle = Number(value);
+    if (!Number.isFinite(angle)) {
+        return null;
+    }
+
+    const twoPi = Math.PI * 2;
+    let normalized = angle % twoPi;
+
+    if (normalized > Math.PI) {
+        normalized -= twoPi;
+    }
+    if (normalized < -Math.PI) {
+        normalized += twoPi;
+    }
+
+    return normalized;
+}
+
+function sanitizePlayerInput(input) {
+    if (!input || typeof input !== 'object') {
+        return null;
+    }
+
+    const angle = normalizeAngle(input.angle);
+    if (angle === null) {
+        return null;
+    }
+
+    return {
+        up: Boolean(input.up),
+        down: Boolean(input.down),
+        left: Boolean(input.left),
+        right: Boolean(input.right),
+        angle: angle
+    };
+}
+
+function extractAngle(data) {
+    if (!data || typeof data !== 'object') {
+        return null;
+    }
+
+    return normalizeAngle(data.angle);
+}
+
+function extractEmojiIndex(data) {
+    if (!data || typeof data !== 'object') {
+        return null;
+    }
+
+    const emojiIndex = Number.parseInt(data.index, 10);
+    if (!Number.isInteger(emojiIndex)) {
+        return null;
+    }
+
+    return emojiIndex;
+}
+
+function extractWeaponType(data) {
+    if (!data || typeof data !== 'object' || typeof data.weapon !== 'string') {
+        return null;
+    }
+
+    return data.weapon;
+}
 
 // Generate unique room ID
 function generateRoomId() {
@@ -713,6 +990,9 @@ class GameRoom {
 
         if (distance(player.x, player.y, flag.x, flag.y) < (CONFIG.PLAYER_SIZE / 2 + CONFIG.FLAG_SIZE / 2)) {
             flag.carrier = player.id;
+            flag.isHome = false;
+            flag.x = player.x;
+            flag.y = player.y - CONFIG.PLAYER_SIZE / 2 - 10;
             player.hasFlag = true;
             this.broadcast('flagPickup', { playerId: player.id, flagTeam: enemyTeam });
         }
@@ -824,13 +1104,36 @@ class GameRoom {
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-    console.log(`Player connected: ${socket.id}`);
+    const ip = getSocketIp(socket);
+    socket.data.ip = ip;
+    socket.data.rateLimitBuckets = new Map();
+    socket.data.rateLimitStrikes = 0;
+
+    const connectionCount = incrementIpConnections(ip);
+    if (connectionCount > SECURITY.MAX_CONNECTIONS_PER_IP) {
+        decrementIpConnections(ip);
+        socket.emit('serverError', { message: 'Too many active connections from this IP.' });
+        socket.disconnect(true);
+        return;
+    }
+
+    socket.data.connectionCounted = true;
+
+    console.log(`Player connected: ${socket.id} (${ip})`);
 
     socket.on('joinMatchmaking', () => {
+        if (isSocketRateLimited(socket, 'joinMatchmaking')) return;
         if (matchmakingQueue.find(s => s.id === socket.id)) return;
+        if (findPlayerRoom(socket.id)) return;
 
-        for (const room of gameRooms.values()) {
-            if (room.players.find(p => p.id === socket.id)) return;
+        if (gameRooms.size >= SECURITY.MAX_ACTIVE_GAMES) {
+            socket.emit('serverBusy', { message: 'Server is at capacity. Try again shortly.' });
+            return;
+        }
+
+        if (matchmakingQueue.length >= SECURITY.MAX_QUEUE_SIZE) {
+            socket.emit('serverBusy', { message: 'Matchmaking queue is full. Try again shortly.' });
+            return;
         }
 
         matchmakingQueue.push(socket);
@@ -838,9 +1141,13 @@ io.on('connection', (socket) => {
 
         console.log(`Player ${socket.id} joined queue. Queue size: ${matchmakingQueue.length}`);
 
-        if (matchmakingQueue.length >= 2) {
+        while (matchmakingQueue.length >= 2 && gameRooms.size < SECURITY.MAX_ACTIVE_GAMES) {
             const player1 = matchmakingQueue.shift();
             const player2 = matchmakingQueue.shift();
+
+            if (!player1?.connected || !player2?.connected) {
+                continue;
+            }
 
             const roomId = generateRoomId();
             const room = new GameRoom(roomId, player1, player2);
@@ -851,105 +1158,160 @@ io.on('connection', (socket) => {
     });
 
     socket.on('leaveMatchmaking', () => {
-        matchmakingQueue = matchmakingQueue.filter(s => s.id !== socket.id);
+        if (isSocketRateLimited(socket, 'leaveMatchmaking')) return;
+
+        removeFromMatchmaking(socket.id);
         socket.emit('matchmakingLeft');
     });
 
     socket.on('playerInput', (input) => {
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                room.handleInput(socket.id, input);
-                break;
-            }
+        if (isSocketRateLimited(socket, 'playerInput')) return;
+
+        const sanitizedInput = sanitizePlayerInput(input);
+        if (!sanitizedInput) {
+            return;
+        }
+
+        const room = findPlayerRoom(socket.id);
+        if (room) {
+            room.handleInput(socket.id, sanitizedInput);
         }
     });
 
     // Ping handler for latency measurement
     socket.on('ping', (callback) => {
+        if (isSocketRateLimited(socket, 'ping')) return;
         if (typeof callback === 'function') callback();
     });
 
     socket.on('playerShoot', (data) => {
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                room.handleShoot(socket.id, data.angle);
-                break;
-            }
+        if (isSocketRateLimited(socket, 'playerShoot')) return;
+
+        const angle = extractAngle(data);
+        if (angle === null) {
+            return;
+        }
+
+        const room = findPlayerRoom(socket.id);
+        if (room) {
+            room.handleShoot(socket.id, angle);
         }
     });
 
     // Ultimate start (SPACE pressed)
     socket.on('ultimateStart', (data) => {
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                room.handleUltimateStart(socket.id, data.angle);
-                break;
-            }
+        if (isSocketRateLimited(socket, 'ultimateStart')) return;
+
+        const angle = extractAngle(data);
+        if (angle === null) {
+            return;
+        }
+
+        const room = findPlayerRoom(socket.id);
+        if (room) {
+            room.handleUltimateStart(socket.id, angle);
         }
     });
 
     // Ultimate release (SPACE released)
     socket.on('ultimateRelease', (data) => {
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                room.handleUltimateRelease(socket.id, data.angle);
-                break;
-            }
+        if (isSocketRateLimited(socket, 'ultimateRelease')) return;
+
+        const angle = extractAngle(data);
+        if (angle === null) {
+            return;
+        }
+
+        const room = findPlayerRoom(socket.id);
+        if (room) {
+            room.handleUltimateRelease(socket.id, angle);
         }
     });
 
     // Send emoji (1-2-3-4 keys)
     socket.on('sendEmoji', (data) => {
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                const player = room.state.players[socket.id];
-                const emojiIndex = data.index;
-                if (emojiIndex >= 0 && emojiIndex < CONFIG.EMOJIS.length) {
-                    room.broadcast('playerEmoji', {
-                        playerId: socket.id,
-                        emoji: CONFIG.EMOJIS[emojiIndex],
-                        x: player.x,
-                        y: player.y
-                    });
-                }
-                break;
-            }
+        if (isSocketRateLimited(socket, 'sendEmoji')) return;
+
+        const emojiIndex = extractEmojiIndex(data);
+        if (emojiIndex === null || emojiIndex < 0 || emojiIndex >= CONFIG.EMOJIS.length) {
+            return;
         }
+
+        const room = findPlayerRoom(socket.id);
+        if (!room) {
+            return;
+        }
+
+        const player = room.state.players[socket.id];
+        if (!player) {
+            return;
+        }
+
+        room.broadcast('playerEmoji', {
+            playerId: socket.id,
+            emoji: CONFIG.EMOJIS[emojiIndex],
+            x: player.x,
+            y: player.y
+        });
     });
 
     socket.on('selectWeapon', (data) => {
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                room.handleWeaponSelect(socket.id, data.weapon);
-                break;
-            }
+        if (isSocketRateLimited(socket, 'selectWeapon')) return;
+
+        const weaponType = extractWeaponType(data);
+        if (!weaponType || !CONFIG.WEAPONS[weaponType]) {
+            return;
+        }
+
+        const room = findPlayerRoom(socket.id);
+        if (room) {
+            room.handleWeaponSelect(socket.id, weaponType);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log(`Player disconnected: ${socket.id}`);
+        console.log(`Player disconnected: ${socket.id} (${ip})`);
 
-        matchmakingQueue = matchmakingQueue.filter(s => s.id !== socket.id);
+        removeFromMatchmaking(socket.id);
 
-        for (const room of gameRooms.values()) {
-            if (room.state.players[socket.id]) {
-                room.handleDisconnect(socket.id);
-                break;
-            }
+        const room = findPlayerRoom(socket.id);
+        if (room) {
+            room.handleDisconnect(socket.id);
+        }
+
+        if (socket.data.connectionCounted) {
+            decrementIpConnections(socket.data.ip || ip);
+            socket.data.connectionCounted = false;
         }
     });
 });
 
 app.get('/', (req, res) => {
+    const ip = getRequestIp(req);
+    const isAllowed = consumeRateLimitBucket(
+        statusRequestsByIp,
+        ip,
+        SECURITY.MAX_HTTP_STATUS_REQUESTS_PER_MIN,
+        60000
+    );
+
+    if (!isAllowed) {
+        res.status(429).json({ status: 'rate_limited' });
+        return;
+    }
+
     res.json({
         status: 'ok',
         players: io.engine.clientsCount,
         queue: matchmakingQueue.length,
-        activeGames: gameRooms.size
+        activeGames: gameRooms.size,
+        uptimeSeconds: Math.floor(process.uptime())
     });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🎮 CTF Game Server running on port ${PORT}`);
+    console.log(`🌐 Allowed origins: ${Array.from(allowedOrigins).join(', ')}`);
+    console.log(`🛡️ Limits: ${SECURITY.MAX_CONNECTIONS_PER_IP} conns/IP, ${SECURITY.MAX_ACTIVE_GAMES} active games`);
 });
